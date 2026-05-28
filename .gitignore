@@ -1,0 +1,13 @@
+.gif-editor.pid
+.qmake.stash
+Makefile
+build/
+*.o
+gif-editor
+gif-editor.log
+gif-editor-cpp.pro
+moc_*.cpp
+moc_*.o
+moc_predefs.h
+*.orig_backup.gif
+optimized*.gif
