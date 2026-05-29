@@ -7,18 +7,34 @@
 #include <cstdlib>
 #include <climits>
 
-// Map RGBA pixel to nearest color in a palette
-static int nearestColor(QRgb pixel, const QVector<QRgb> &palette) {
-    int bestIdx = 0;
-    int bestDist = INT_MAX;
-    for (int i = 0; i < palette.size(); i++) {
-        int dr = qRed(pixel) - qRed(palette[i]);
-        int dg = qGreen(pixel) - qGreen(palette[i]);
-        int db = qBlue(pixel) - qBlue(palette[i]);
-        int dist = dr * dr + dg * dg + db * db;
-        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+// 6-bits-per-channel 3D lookup table for O(1) nearest-color mapping
+// Instead of scanning the full palette per pixel (O(w*h*|P|)), we precompute
+// the nearest palette index for each quantized RGB bucket and do one lookup.
+static void buildColorLUT(unsigned char lut[64][64][64], const QVector<QRgb> &palette) {
+    int n = palette.size();
+    for (int r = 0; r < 64; r++) {
+        for (int g = 0; g < 64; g++) {
+            for (int b = 0; b < 64; b++) {
+                int bestIdx = 0;
+                int bestDist = INT_MAX;
+                int pr = r * 4 + 2;   // decode bucket center (approx)
+                int pg = g * 4 + 2;
+                int pb = b * 4 + 2;
+                for (int i = 0; i < n; i++) {
+                    int dr = pr - qRed(palette[i]);
+                    int dg = pg - qGreen(palette[i]);
+                    int db = pb - qBlue(palette[i]);
+                    int dist = dr * dr + dg * dg + db * db;
+                    if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+                }
+                lut[r][g][b] = (unsigned char)bestIdx;
+            }
+        }
     }
-    return bestIdx;
+}
+
+static inline int nearestColor(QRgb pixel, const unsigned char lut[64][64][64]) {
+    return lut[(qRed(pixel) >> 2) & 63][(qGreen(pixel) >> 2) & 63][(qBlue(pixel) >> 2) & 63];
 }
 
 // Sample frames across the animation and build a representative global palette
@@ -138,8 +154,11 @@ bool GifWriter::write(const QString &path,
         EGifPutExtensionTrailer(gif);
     }
 
+    // Build 3D LUT for O(1) nearest-color mapping
+    unsigned char (*lut)[64][64] = new unsigned char[64][64][64];
+    buildColorLUT(lut, globalPalette);
+
     // Quantize all frames to indexed first, then diff consecutive frames
-    // to write only changed rectangles instead of full-canvas images.
     QVector<QImage> indexedFrames(total);
     for (int i = 0; i < total; i++) {
         QImage src = frameSource(i);
@@ -148,13 +167,19 @@ bool GifWriter::write(const QString &path,
 
         QImage indexed(w, h, QImage::Format_Indexed8);
         indexed.setColorTable(globalPalette);
+        // Direct scanline access avoids setPixel() overhead per pixel
         for (int y = 0; y < h; y++) {
             auto *line = reinterpret_cast<const QRgb *>(rgba.constScanLine(y));
-            for (int x = 0; x < w; x++)
-                indexed.setPixel(x, y, nearestColor(line[x], globalPalette));
+            uchar *dst = indexed.scanLine(y);
+            for (int x = 0; x < w; x++) {
+                QRgb p = line[x];
+                dst[x] = lut[(qRed(p) >> 2) & 63][(qGreen(p) >> 2) & 63][(qBlue(p) >> 2) & 63];
+            }
         }
         indexedFrames[i] = indexed;
+        if (onProgress && (i % 10) == 0) onProgress(i + 1, total);
     }
+    delete[] lut;
 
     // Write frame 0 as full canvas
     {
