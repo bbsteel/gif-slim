@@ -19,8 +19,8 @@ jobs:
         run: ./package-linux.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: GifEditor-linux
-          path: dist/GifEditor-*-linux-x86_64.AppImage
+          name: GifSlim-linux
+          path: dist/GifSlim-*-linux-x86_64.AppImage
 
   windows:
     runs-on: windows-2022
@@ -48,10 +48,10 @@ jobs:
         run: ./package-windows.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: GifEditor-windows
+          name: GifSlim-windows
           path: |
-            dist/GifEditor-*-windows-x64-setup.exe
-            dist/GifEditor-*-windows-x64-portable.zip
+            dist/GifSlim-*-windows-x64-setup.exe
+            dist/GifSlim-*-windows-x64-portable.zip
 
   macos:
     runs-on: macos-14
@@ -66,5 +66,5 @@ jobs:
           ./package-macos.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: GifEditor-macos
-          path: dist/GifEditor-*-macos.dmg
+          name: GifSlim-macos
+          path: dist/GifSlim-*-macos.dmg

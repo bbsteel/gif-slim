@@ -10,13 +10,13 @@ fi
 
 VERSION="${VERSION:-1.0.0}"
 DIST_DIR="$(pwd)/dist"
-APP_NAME="gif-editor.app"
+APP_NAME="gif-slim.app"
 
 mkdir -p "$DIST_DIR"
 
-qmake6 GifEditor.pro
+qmake6 GifSlim.pro
 make -j"$(sysctl -n hw.ncpu)"
 macdeployqt "$APP_NAME" -dmg
 
-mv -f "gif-editor.dmg" "$DIST_DIR/GifEditor-${VERSION}-macos.dmg"
-echo "$DIST_DIR/GifEditor-${VERSION}-macos.dmg"
+mv -f "gif-slim.dmg" "$DIST_DIR/GifSlim-${VERSION}-macos.dmg"
+echo "$DIST_DIR/GifSlim-${VERSION}-macos.dmg"

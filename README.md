@@ -1,4 +1,4 @@
-# GIF Editor
+# GIF Slim
 
 一个基于 **Qt Widgets + giflib** 的本地 GIF 编辑器，支持：
 - 拖动范围选择
@@ -10,7 +10,7 @@
 
 | 平台 | 当前产物 | 当前状态 |
 | --- | --- | --- |
-| Linux | `dist/GifEditor-1.0.0-linux-x86_64.AppImage` | **已验证** |
+| Linux | `dist/GifSlim-1.0.0-linux-x86_64.AppImage` | **已验证** |
 | Windows | `Setup.exe` 或 portable zip | 需要原生 Windows / MSYS2 环境 |
 | macOS | `.dmg` | 需要原生 macOS 环境 |
 
@@ -31,7 +31,7 @@
 CLI 冒烟：
 
 ```bash
-QT_QPA_PLATFORM=offscreen ./gif-editor --headless --open test.gif --skip 2 --save /tmp/out.gif
+QT_QPA_PLATFORM=offscreen ./gif-slim --headless --open test.gif --skip 2 --save /tmp/out.gif
 ```
 
 ## 打包入口
@@ -77,12 +77,12 @@ QT_QPA_PLATFORM=offscreen ./gif-editor --headless --open test.gif --skip 2 --sav
 产物默认输出到：
 
 ```text
-dist/GifEditor-1.0.0-linux-x86_64.AppImage
+dist/GifSlim-1.0.0-linux-x86_64.AppImage
 ```
 
 ### 当前实现细节
 
-- 从 `assets/gif-editor.svg` 渲染出 Linux 用 PNG 图标
+- 从 `assets/gif-slim.svg` 渲染出 Linux 用 PNG 图标
 - 自动收集 Qt 依赖
 - 额外带入 `offscreen` / `minimal` 平台插件，保证 headless 用法可用
 
@@ -139,14 +139,14 @@ choco install innosetup -y
 
 这个脚本内部做的事情是：
 
-1. `qmake6 GifEditor.pro`
+1. `qmake6 GifSlim.pro`
 2. `make -j...`
-3. 把 `release/gif-editor.exe` 复制到 `dist/windows-portable/`
-4. 执行 `windeployqt dist/windows-portable/gif-editor.exe`
+3. 把 `release/gif-slim.exe` 复制到 `dist/windows-portable/`
+4. 执行 `windeployqt dist/windows-portable/gif-slim.exe`
 5. 如果系统里有 `iscc`（Inno Setup 编译器），则继续用：
 
 ```text
-packaging/windows/GifEditor.iss
+packaging/windows/GifSlim.iss
 ```
 
 生成安装包；否则退化为 portable zip。
@@ -156,13 +156,13 @@ packaging/windows/GifEditor.iss
 有 Inno Setup 时：
 
 ```text
-dist/GifEditor-1.0.0-windows-x64-setup.exe
+dist/GifSlim-1.0.0-windows-x64-setup.exe
 ```
 
 没有 Inno Setup 时：
 
 ```text
-dist/GifEditor-1.0.0-windows-x64-portable.zip
+dist/GifSlim-1.0.0-windows-x64-portable.zip
 ```
 
 ### Windows 常见问题
@@ -171,7 +171,7 @@ dist/GifEditor-1.0.0-windows-x64-portable.zip
 | --- | --- | --- |
 | 找不到 `qmake6` | `mingw-w64-ucrt-x86_64-qt6-base` 没装，或不在 UCRT64 shell | 确认包已装、shell 正确，`which qmake6` 验证 |
 | 找不到 `windeployqt` | `mingw-w64-ucrt-x86_64-qt6-tools` 没装 | `pacman -S mingw-w64-ucrt-x86_64-qt6-tools` |
-| `cp: cannot stat 'release/gif-editor.exe'` | 构建失败，产物没生成 | 检查 `make` 输出定位错误（通常是 giflib 没装或 qmake 版本不对） |
+| `cp: cannot stat 'release/gif-slim.exe'` | 构建失败，产物没生成 | 检查 `make` 输出定位错误（通常是 giflib 没装或 qmake 版本不对） |
 | 运行时报缺 `libgif-7.dll` | giflib 运行库没打包进去 | 确保 `mingw-w64-ucrt-x86_64-giflib` 已安装后重新跑脚本 |
 | `zip: command not found` | MSYS2 精简安装缺少 zip | `pacman -S zip`，或脚本会自动回退到 PowerShell |
 | `iscc` 不存在 | 没装 Inno Setup | 用管理员 PowerShell：`choco install innosetup -y`；不需要安装包则忽略，脚本自动退化为 portable zip |
@@ -197,14 +197,14 @@ export PATH="$(brew --prefix qt)/bin:$PATH"
 产物默认输出到：
 
 ```text
-dist/GifEditor-1.0.0-macos.dmg
+dist/GifSlim-1.0.0-macos.dmg
 ```
 
 脚本内部会：
 
-1. `qmake6 GifEditor.pro`
+1. `qmake6 GifSlim.pro`
 2. `make`
-3. `macdeployqt gif-editor.app -dmg`
+3. `macdeployqt gif-slim.app -dmg`
 
 ## GitHub Actions 自动打包
 

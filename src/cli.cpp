@@ -26,7 +26,7 @@ CliArgs parseCli(int argc, char *argv[]) {
         } else if (a == "--save" && i + 1 < argc) {
             args.actions.push_back({CliAction::Save, argv[++i]});
         } else if (a == "--help" || a == "-h") {
-            qInfo() << R"(GIF Editor CLI
+            qInfo() << R"(GIF Slim CLI
   --headless          不显示 GUI，处理后退出
   --open file.gif     打开文件
   --crop start-end    裁剪至范围
@@ -38,8 +38,8 @@ CliArgs parseCli(int argc, char *argv[]) {
   --log-level level   日志级别 (debug/info/warn)
 
 Examples:
-  gif-editor --headless --open in.gif --crop 10-50 --save out.gif
-  gif-editor --headless --open in.gif --skip 2 --scale 0.5 --speed 2.0 --save out.gif
+  gif-slim --headless --open in.gif --crop 10-50 --save out.gif
+  gif-slim --headless --open in.gif --skip 2 --scale 0.5 --speed 2.0 --save out.gif
 )";
             args.actions.push_back({CliAction::Quit, ""});
         } else if (!a.startsWith("-")) {

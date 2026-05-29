@@ -29,20 +29,20 @@ int main(int argc, char *argv[]) {
     bool headless = cli.headless;
 
     QApplication app(argc, argv);
-    app.setApplicationName("GIF Editor");
+    app.setApplicationName("GIF Slim");
     app.setApplicationVersion("1.0.0");
-    app.setOrganizationName("gif-editor-cpp");
-    app.setDesktopFileName("gif-editor");
+    app.setOrganizationName("gif-slim");
+    app.setDesktopFileName("gif-slim");
 
     QString logDir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     if (logDir.isEmpty()) {
         logDir = QDir::currentPath();
     }
     QDir().mkpath(logDir);
-    g_logFile.setFileName(QDir(logDir).filePath("gif-editor.log"));
+    g_logFile.setFileName(QDir(logDir).filePath("gif-slim.log"));
     g_logFile.open(QIODevice::WriteOnly | QIODevice::Append);
     qInstallMessageHandler(logHandler);
-    qInfo() << "=== GIF Editor started ===";
+    qInfo() << "=== GIF Slim started ===";
 
     app.setStyle(QStyleFactory::create("Fusion"));
     QPalette p;

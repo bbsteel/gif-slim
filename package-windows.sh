@@ -27,11 +27,11 @@ PORTABLE_DIR="$DIST_DIR/windows-portable"
 
 mkdir -p "$PORTABLE_DIR"
 
-qmake6 GifEditor.pro
+qmake6 GifSlim.pro
 make -j"$(nproc 2>/dev/null || echo 4)"
 
-cp release/gif-editor.exe "$PORTABLE_DIR/gif-editor.exe"
-windeployqt "$PORTABLE_DIR/gif-editor.exe"
+cp release/gif-slim.exe "$PORTABLE_DIR/gif-slim.exe"
+windeployqt "$PORTABLE_DIR/gif-slim.exe"
 
 # Use ldd to automatically discover and copy all MinGW/GCC DLLs
 # that windeployqt doesn't collect (giflib, harfbuzz, gcc runtime, etc.).
@@ -43,7 +43,7 @@ copy_missing_deps() {
     local have
     have=$(cd "$exe_dir" && ls *.dll 2>/dev/null | tr '[:upper:]' '[:lower:]')
 
-    ldd "$exe_dir/gif-editor.exe" 2>/dev/null | while IFS= read -r line; do
+    ldd "$exe_dir/gif-slim.exe" 2>/dev/null | while IFS= read -r line; do
         case "$line" in *" => "* ) ;; *) continue ;; esac
 
         local dll_path
@@ -90,11 +90,11 @@ copy_missing_deps() {
 copy_missing_deps "$PORTABLE_DIR"
 
 if command -v iscc >/dev/null 2>&1; then
-    iscc packaging/windows/GifEditor.iss
+    iscc packaging/windows/GifSlim.iss
 elif command -v zip >/dev/null 2>&1; then
-    (cd "$DIST_DIR" && zip -r "GifEditor-${VERSION}-windows-x64-portable.zip" windows-portable)
+    (cd "$DIST_DIR" && zip -r "GifSlim-${VERSION}-windows-x64-portable.zip" windows-portable)
 elif command -v powershell >/dev/null 2>&1; then
-    powershell -Command "Compress-Archive -Path '$PORTABLE_DIR' -DestinationPath '$DIST_DIR/GifEditor-${VERSION}-windows-x64-portable.zip'"
+    powershell -Command "Compress-Archive -Path '$PORTABLE_DIR' -DestinationPath '$DIST_DIR/GifSlim-${VERSION}-windows-x64-portable.zip'"
 else
     echo "错误: 未找到 iscc、zip 或 powershell，无法打包。请安装 Inno Setup 或 zip。" >&2
     exit 1

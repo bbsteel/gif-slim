@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(GifEditor VERSION 1.0.0 LANGUAGES CXX)
+project(GifSlim VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,25 +34,25 @@ set(HEADERS
     src/cli.h
 )
 
-add_executable(gif-editor ${SOURCES} ${HEADERS})
+add_executable(gif-slim ${SOURCES} ${HEADERS})
 
-set_target_properties(gif-editor PROPERTIES
-    MACOSX_BUNDLE_GUI_IDENTIFIER com.gifeditor.app
+set_target_properties(gif-slim PROPERTIES
+    MACOSX_BUNDLE_GUI_IDENTIFIER com.gifslim.app
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
 )
 
-target_include_directories(gif-editor PRIVATE
+target_include_directories(gif-slim PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${GIF_INCLUDE_DIR}
 )
 
-target_link_libraries(gif-editor PRIVATE
+target_link_libraries(gif-slim PRIVATE
     Qt6::Widgets
     ${GIF_LIB}
 )
 
-install(TARGETS gif-editor
+install(TARGETS gif-slim
     BUNDLE DESTINATION .
     RUNTIME DESTINATION bin
 )

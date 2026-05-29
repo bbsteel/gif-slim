@@ -2,15 +2,15 @@
 
 ## Build and validation
 
-- Primary build path: qmake, not CMake. Use `./build.sh` for the standard local build; it regenerates the root `Makefile` with `qmake6 GifEditor.pro` and then runs `make -j$(nproc)`.
+- Primary build path: qmake, not CMake. Use `./build.sh` for the standard local build; it regenerates the root `Makefile` with `qmake6 GifSlim.pro` and then runs `make -j$(nproc)`.
 - Use `./build_and_run.sh` to rebuild and launch the desktop app through the existing `run.sh` wrapper.
 - Packaging entrypoints are `./package-linux.sh`, `./package-windows.sh`, and `./package-macos.sh`. Only the Linux script is expected to run from this repository's current Linux environment; the other two are native-platform packaging scripts for Windows/macOS environments.
-- The checked-in root `Makefile` is generated from `GifEditor.pro` and is currently the most reliable build entrypoint.
+- The checked-in root `Makefile` is generated from `GifSlim.pro` and is currently the most reliable build entrypoint.
 - No automated test suite or lint target is defined in this repository.
 - Use the headless CLI path for smoke checks after code changes:
 
 ```bash
-QT_QPA_PLATFORM=offscreen ./gif-editor --headless --open test.gif --skip 2 --save /tmp/out.gif
+QT_QPA_PLATFORM=offscreen ./gif-slim --headless --open test.gif --skip 2 --save /tmp/out.gif
 ```
 
 ## High-level architecture
@@ -30,7 +30,7 @@ QT_QPA_PLATFORM=offscreen ./gif-editor --headless --open test.gif --skip 2 --sav
 - GUI `save()` is a dialog-driven export flow: it shows the current effective change summary, prefills a default output filename, and only overwrites the source file if the user keeps the original name. Overwrite saves still use a `.bak` backup/restore path.
 - `saveAs()` is still the non-interactive export path used by CLI/headless flows.
 - Headless mode still instantiates `QApplication` and `MainWindow`; use `QT_QPA_PLATFORM=offscreen` in non-desktop environments.
-- Packaging assets live under `assets/` and `packaging/`. The Linux AppImage flow depends on `packaging/linux/gif-editor.desktop` and the SVG icon in `assets/gif-editor.svg`.
+- Packaging assets live under `assets/` and `packaging/`. The Linux AppImage flow depends on `packaging/linux/gif-slim.desktop` and the SVG icon in `assets/gif-slim.svg`.
 - UI text and many inline comments are in Chinese. Keep new user-facing strings and nearby maintenance notes consistent with that style.
 - The estimated export size shown in the sidebar is intentionally a fast approximation derived from the current active frame count and export parameters; it is not produced by a background re-encode.
 - `optimizer.*` still exists as a separate helper pipeline, but the main GUI export flow now applies skip/range changes through `m_activeFrames` and applies speed/scale/color directly during export.

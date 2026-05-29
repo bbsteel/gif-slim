@@ -33,7 +33,7 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
-    setWindowTitle("GIF Editor");
+    setWindowTitle("GIF Slim");
     resize(1100, 700);
     setAcceptDrops(true);
 

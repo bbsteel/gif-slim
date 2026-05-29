@@ -15,9 +15,9 @@ mkdir -p "$APPDIR/usr/plugins/platforms"
 
 ./build.sh
 
-rsvg-convert -w 256 -h 256 "$ROOT_DIR/assets/gif-editor.svg" -o "$APPDIR/usr/share/icons/hicolor/256x256/apps/gif-editor.png"
-cp "$ROOT_DIR/gif-editor" "$APPDIR/usr/bin/gif-editor"
-cp "$ROOT_DIR/packaging/linux/gif-editor.desktop" "$APPDIR/usr/share/applications/gif-editor.desktop"
+rsvg-convert -w 256 -h 256 "$ROOT_DIR/assets/gif-slim.svg" -o "$APPDIR/usr/share/icons/hicolor/256x256/apps/gif-slim.png"
+cp "$ROOT_DIR/gif-slim" "$APPDIR/usr/bin/gif-slim"
+cp "$ROOT_DIR/packaging/linux/gif-slim.desktop" "$APPDIR/usr/share/applications/gif-slim.desktop"
 cp /usr/lib/qt6/plugins/platforms/libqoffscreen.so "$APPDIR/usr/plugins/platforms/"
 cp /usr/lib/qt6/plugins/platforms/libqminimal.so "$APPDIR/usr/plugins/platforms/"
 
@@ -43,13 +43,13 @@ export ARCH=x86_64
 export APPIMAGE_EXTRACT_AND_RUN=1
 export NO_STRIP=1
 
-rm -f "$DIST_DIR"/GIF_Editor-*.AppImage "$DIST_DIR"/gif-editor*.AppImage "$DIST_DIR"/GifEditor-*.AppImage
+rm -f "$DIST_DIR"/GIF_Slim-*.AppImage "$DIST_DIR"/gif-slim*.AppImage "$DIST_DIR"/GifSlim-*.AppImage
 
 "$TOOLS_DIR/linuxdeploy-x86_64.AppImage" \
     --appdir "$APPDIR" \
-    -e "$APPDIR/usr/bin/gif-editor" \
-    -d "$APPDIR/usr/share/applications/gif-editor.desktop" \
-    -i "$APPDIR/usr/share/icons/hicolor/256x256/apps/gif-editor.png" \
+    -e "$APPDIR/usr/bin/gif-slim" \
+    -d "$APPDIR/usr/share/applications/gif-slim.desktop" \
+    -i "$APPDIR/usr/share/icons/hicolor/256x256/apps/gif-slim.png" \
     --plugin qt \
     --output appimage
 
@@ -63,6 +63,6 @@ if [ -z "$generated" ]; then
     exit 1
 fi
 
-final_path="$DIST_DIR/GifEditor-${VERSION}-linux-x86_64.AppImage"
+final_path="$DIST_DIR/GifSlim-${VERSION}-linux-x86_64.AppImage"
 mv "$generated" "$final_path"
 echo "$final_path"

@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=GIF Editor
+Name=GIF Slim
 Comment=Edit GIF frame ranges and export optimized GIFs
-Exec=gif-editor
-Icon=gif-editor
+Exec=gif-slim
+Icon=gif-slim
 Categories=Graphics;
 Terminal=false
