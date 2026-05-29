@@ -142,12 +142,11 @@ bool GifWriter::write(const QString &path,
 
     // NETSCAPE loop extension
     if (loop >= 0) {
-        EGifPutExtensionLeader(gif, APPLICATION_EXT_FUNC_CODE);
-        char nsle[11] = {'N','E','T','S','C','A','P','E','2','.','0'};
-        EGifPutExtensionBlock(gif, 11, nsle);
-        unsigned char sub[3] = {1, (unsigned char)(loop & 0xFF), (unsigned char)((loop >> 8) & 0xFF)};
-        EGifPutExtensionBlock(gif, 3, sub);
-        EGifPutExtensionTrailer(gif);
+        unsigned char nsData[16] = {
+            0x0B, 'N','E','T','S','C','A','P','E','2','.','0',
+            0x03, (unsigned char)(loop & 0xFF), (unsigned char)((loop >> 8) & 0xFF), 0x00
+        };
+        EGifPutExtension(gif, APPLICATION_EXT_FUNC_CODE, 16, nsData);
     }
 
     // Build 3D LUT for O(1) nearest-color mapping
@@ -268,12 +267,11 @@ bool GifWriter::writeRaw(const QString &dstPath,
 
     // NETSCAPE loop extension
     {
-        EGifPutExtensionLeader(dst, APPLICATION_EXT_FUNC_CODE);
-        char nsle[11] = {'N','E','T','S','C','A','P','E','2','.','0'};
-        EGifPutExtensionBlock(dst, 11, nsle);
-        unsigned char sub[3] = {1, 0, 0};
-        EGifPutExtensionBlock(dst, 3, sub);
-        EGifPutExtensionTrailer(dst);
+        unsigned char nsData[16] = {
+            0x0B, 'N','E','T','S','C','A','P','E','2','.','0',
+            0x03, 0x01, 0x00, 0x00
+        };
+        EGifPutExtension(dst, APPLICATION_EXT_FUNC_CODE, 16, nsData);
     }
 
     // Copy selected frames
@@ -282,21 +280,35 @@ bool GifWriter::writeRaw(const QString &dstPath,
         if (si < 0 || si >= src->ImageCount) continue;
         const SavedImage &simg = src->SavedImages[si];
 
-        // Write extensions, replacing delay in GCE
+        // Build GCE from original or default values
+        int disposal = 0, transparent = -1, delay = 100;
         for (int j = 0; j < simg.ExtensionBlockCount; j++) {
             const ExtensionBlock &eb = simg.ExtensionBlocks[j];
             if (eb.Function == GRAPHICS_EXT_FUNC_CODE && eb.ByteCount >= 4) {
-                int newDelay = (i < (int)delays.size()) ? delays[i] : 100;
-                int cs = newDelay / 10; if (cs < 1) cs = 1;
-                GifByteType buf[4];
-                buf[0] = eb.Bytes[0];   // disposal + flags
-                buf[1] = (GifByteType)(cs & 0xFF);
-                buf[2] = (GifByteType)((cs >> 8) & 0xFF);
-                buf[3] = eb.Bytes[3];   // transparent color
-                EGifPutExtension(dst, GRAPHICS_EXT_FUNC_CODE, 4, buf);
-            } else {
+                disposal    = (eb.Bytes[0] >> 2) & 0x07;
+                transparent = (eb.Bytes[0] & 1) ? eb.Bytes[3] : -1;
+                delay       = ((eb.Bytes[2] << 8) | eb.Bytes[1]) * 10;
+                if (delay < 10) delay = 100;
+            } else if (eb.Function != APPLICATION_EXT_FUNC_CODE && eb.Function != 0) {
+                // Preserve non-GCE, non-continuation per-frame extensions
+                // (APPLICATION extensions like NETSCAPE are global, already written above;
+                //  Function=0 blocks are continuation sub-blocks of multi-block extensions)
                 EGifPutExtension(dst, eb.Function, eb.ByteCount, eb.Bytes);
             }
+        }
+
+        // Write GCE with (possibly modified) delay
+        int newDelay = (i < (int)delays.size()) ? delays[i] : delay;
+        int cs = newDelay / 10; if (cs < 1) cs = 1;
+        {
+            GifByteType gceBuf[8];
+            GraphicsControlBlock gcb;
+            gcb.DisposalMode = disposal;
+            gcb.UserInputFlag = false;
+            gcb.DelayTime = cs;
+            gcb.TransparentColor = transparent;
+            size_t gceLen = EGifGCBToExtension(&gcb, gceBuf);
+            EGifPutExtension(dst, GRAPHICS_EXT_FUNC_CODE, (int)gceLen, gceBuf);
         }
 
         const GifImageDesc &desc = simg.ImageDesc;
