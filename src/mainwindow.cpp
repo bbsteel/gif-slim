@@ -254,18 +254,14 @@ bool MainWindow::exportGif(const QString &path, bool reloadAfterSave) {
     const double speed = m_speedFactor;
     const int colorCount = m_colorCount;
 
-    auto frameSource = [reader, active, scale, colorCount](int i) -> QImage {
+    auto frameSource = [reader, active, scale](int i) -> QImage {
         QImage img = reader->getFrame(active[i]);
         if (scale != 1.0) {
             int w = std::max(1, int(img.width() * scale));
             int h = std::max(1, int(img.height() * scale));
             img = img.scaled(w, h, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
         }
-        if (colorCount < 256) {
-            img = img.convertToFormat(QImage::Format_Indexed8, Qt::DiffuseDither);
-            img.setColorCount(colorCount);
-            img = img.convertToFormat(QImage::Format_RGBA8888);
-        }
+        // Color reduction is handled by GifWriter with a shared palette
         return img;
     };
 
@@ -288,7 +284,7 @@ bool MainWindow::exportGif(const QString &path, bool reloadAfterSave) {
         QFile::copy(m_sourcePath, backupPath);
     }
 
-    bool ok = GifWriter::write(outPath, frameSource, durs, 0);
+    bool ok = GifWriter::write(outPath, frameSource, durs, 0, colorCount);
     QApplication::restoreOverrideCursor();
 
     if (ok) {

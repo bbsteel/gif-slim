@@ -16,11 +16,13 @@ public:
     /// @param frames    帧生成器：call getFrame(i) 获取每帧
     /// @param durations 每帧 delay (ms)
     /// @param loop      0=无限循环
+    /// @param colorCount 调色板颜色数 (≤256)
     /// @param onProgress 进度回调
     static bool write(const QString &path,
                       const std::function<QImage(int)> &frameSource,
                       const std::vector<int> &durations,
                       int loop = 0,
+                      int colorCount = 256,
                       ProgressFn onProgress = {});
 
     /// 预估输出大小 (bytes)

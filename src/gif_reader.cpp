@@ -7,28 +7,12 @@
 #include <cstring>
 #include <algorithm>
 
-// ── helpers ──
-
-static int readFunc(GifFileType *gif, GifByteType *buf, int len) {
-    auto *file = static_cast<QFile *>(gif->UserData);
-    return static_cast<int>(file->read(reinterpret_cast<char *>(buf), len));
-}
-
 GifReader::GifReader(const QString &path)
     : m_pathBytes(path.toUtf8())
 {
     m_info.filePath = path;
     m_info.fileSize = QFileInfo(path).size();
 
-    // 用 QFile 打开
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {
-        qWarning() << "Cannot open:" << path;
-        return;
-    }
-
-    // giflib 需要 FILE* 或用自定义 IO —— 用 QFile 适配
-    // 简便方法：直接用 DGifOpenFileName
     int error = 0;
     auto *gif = DGifOpenFileName(m_pathBytes.constData(), &error);
     if (!gif) {
@@ -36,7 +20,6 @@ GifReader::GifReader(const QString &path)
         return;
     }
 
-    // DGifSlurp 一次性读取全部帧（giflib 内部格式，不转 QImage）
     if (DGifSlurp(gif) != GIF_OK) {
         qWarning() << "DGifSlurp failed";
         DGifCloseFile(gif, nullptr);
@@ -47,15 +30,17 @@ GifReader::GifReader(const QString &path)
     m_info.height = gif->SHeight;
     m_info.frameCount = gif->ImageCount;
 
-    // 收集每帧信息
+    // Extract per-frame metadata
     for (int i = 0; i < gif->ImageCount; i++) {
         const auto &img = gif->SavedImages[i];
-        int delay = 100; // default 100ms
+        int delay = 100, disposal = 0, transparent = -1;
         for (int j = 0; j < img.ExtensionBlockCount; j++) {
             const auto &ext = img.ExtensionBlocks[j];
             if (ext.Function == GRAPHICS_EXT_FUNC_CODE && ext.ByteCount >= 4) {
+                disposal = (ext.Bytes[0] >> 2) & 0x07;
+                transparent = (ext.Bytes[0] & 1) ? ext.Bytes[3] : -1;
                 delay = (ext.Bytes[2] << 8) | ext.Bytes[1];
-                delay = delay * 10; // 百分秒 → 毫秒
+                delay = delay * 10;
                 if (delay < 10) delay = 100;
                 break;
             }
@@ -66,14 +51,16 @@ GifReader::GifReader(const QString &path)
         GifFrameInfo fi;
         fi.index = i;
         fi.delayMs = delay;
+        fi.disposal = disposal;
+        fi.transparent = transparent;
         m_info.frames.push_back(fi);
     }
 
-    m_cache.resize(gif->ImageCount);
-    for (auto &img : m_cache) img = QImage();
-
     m_gifFile = gif;
     m_valid = true;
+
+    // Pre-composite all frames
+    compositeAllFrames();
 }
 
 GifReader::~GifReader() {
@@ -82,8 +69,103 @@ GifReader::~GifReader() {
     }
 }
 
+void GifReader::compositeAllFrames() {
+    auto *gif = static_cast<GifFileType *>(m_gifFile);
+    int w = m_info.width, h = m_info.height;
+    if (w <= 0 || h <= 0) return;
+
+    // Background color
+    QRgb bgColor = qRgba(0, 0, 0, 0);
+    if (gif->SColorMap && gif->SBackGroundColor < gif->SColorMap->ColorCount) {
+        auto &c = gif->SColorMap->Colors[gif->SBackGroundColor];
+        bgColor = qRgba(c.Red, c.Green, c.Blue, 255);
+    }
+
+    // Working canvas: the visual state after drawing each frame
+    QImage canvas(w, h, QImage::Format_RGBA8888);
+    canvas.fill(bgColor);
+
+    // For DISPOSE_PREVIOUS (3): saved canvas state before a frame is drawn
+    QImage prevCanvas;
+
+    m_cache.resize(gif->ImageCount);
+
+    for (int i = 0; i < gif->ImageCount; i++) {
+        const auto &saved = gif->SavedImages[i];
+        const auto &fi = m_info.frames[i];
+
+        int fw = (int)saved.ImageDesc.Width;
+        int fh = (int)saved.ImageDesc.Height;
+        int left = (int)saved.ImageDesc.Left;
+        int top = (int)saved.ImageDesc.Top;
+
+        // Apply disposal from PREVIOUS frame
+        if (i > 0) {
+            const auto &prev = gif->SavedImages[i - 1];
+            const auto &prevFi = m_info.frames[i - 1];
+            int pw = (int)prev.ImageDesc.Width;
+            int ph = (int)prev.ImageDesc.Height;
+            int pLeft = (int)prev.ImageDesc.Left;
+            int pTop = (int)prev.ImageDesc.Top;
+
+            if (prevFi.disposal == 2) {
+                // Restore to background
+                for (int y = 0; y < ph; y++) {
+                    auto *line = reinterpret_cast<QRgb *>(canvas.scanLine(pTop + y)) + pLeft;
+                    for (int x = 0; x < pw; x++)
+                        line[x] = bgColor;
+                }
+            } else if (prevFi.disposal == 3 && !prevCanvas.isNull()) {
+                // Restore to previous canvas state (only the affected rect)
+                for (int y = 0; y < ph; y++) {
+                    int cy = pTop + y;
+                    if (cy < 0 || cy >= h) continue;
+                    auto *dst = reinterpret_cast<QRgb *>(canvas.scanLine(cy)) + pLeft;
+                    auto *src = reinterpret_cast<const QRgb *>(prevCanvas.constScanLine(cy)) + pLeft;
+                    for (int x = 0; x < pw; x++)
+                        dst[x] = src[x];
+                }
+            }
+            // disposal 0/1: leave in place (do nothing)
+        }
+
+        // Save pre-draw canvas if NEXT frame uses DISPOSE_PREVIOUS
+        if (i + 1 < gif->ImageCount && m_info.frames[i + 1].disposal == 3) {
+            prevCanvas = canvas.copy();
+        }
+
+        // Draw current frame
+        ColorMapObject *cmap = saved.ImageDesc.ColorMap
+            ? saved.ImageDesc.ColorMap : gif->SColorMap;
+        if (cmap) {
+            const auto *raster = saved.RasterBits;
+            for (int y = 0; y < fh; y++) {
+                int cy = top + y;
+                if (cy < 0 || cy >= h) continue;
+                auto *line = reinterpret_cast<QRgb *>(canvas.scanLine(cy)) + left;
+                for (int x = 0; x < fw; x++) {
+                    int cx = left + x;
+                    if (cx < 0 || cx >= w) continue;
+                    int idx = raster[y * fw + x];
+                    if (idx == fi.transparent) continue;
+                    if (idx >= 0 && idx < cmap->ColorCount) {
+                        auto &entry = cmap->Colors[idx];
+                        line[x] = qRgba(entry.Red, entry.Green, entry.Blue, 255);
+                    }
+                }
+            }
+        }
+
+        // Copy composited result to cache
+        m_cache[i] = canvas.copy();
+    }
+}
+
 QImage GifReader::decodeFrame(int index) {
+    // After compositeAllFrames, all frames are pre-computed in m_cache.
+    // This method is kept for API compatibility; it returns the cached frame.
     if (index < 0 || index >= m_info.frameCount) return {};
+    if (!m_cache[index].isNull()) return m_cache[index];
 
     auto *gif = static_cast<GifFileType *>(m_gifFile);
     const auto &saved = gif->SavedImages[index];
@@ -93,11 +175,9 @@ QImage GifReader::decodeFrame(int index) {
     int left = saved.ImageDesc.Left;
     int top = saved.ImageDesc.Top;
 
-    // 获取调色板
     ColorMapObject *cmap = saved.ImageDesc.ColorMap ? saved.ImageDesc.ColorMap : gif->SColorMap;
     if (!cmap) return {};
 
-    // 构建 RGBA 图像 (全尺寸)
     QImage img(m_info.width, m_info.height, QImage::Format_RGBA8888);
     img.fill(Qt::transparent);
 
@@ -119,7 +199,6 @@ QImage GifReader::decodeFrame(int index) {
 QImage GifReader::getFrame(int index) {
     if (index < 0 || index >= m_info.frameCount) return {};
 
-    // 缓存命中
     if (!m_cache[index].isNull())
         return m_cache[index];
 

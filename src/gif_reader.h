@@ -9,7 +9,8 @@
 struct GifFrameInfo {
     int index;
     int delayMs;       // 帧间隔 (ms)，最小 10ms
-    int disposal;      // 处置方式
+    int disposal;      // 处置方式: 0/1=leave, 2=background, 3=previous
+    int transparent;   // 透明色索引, -1=无
     uint32_t fileOffset; // 该帧数据在文件中的偏移（用于按需解码）
 };
 
@@ -47,8 +48,7 @@ public:
     const char *filePath() const { return m_info.filePath.toUtf8().constData(); }
 
 private:
-    bool parseHeader();
-    void collectDurations();
+    void compositeAllFrames();
 
     GifInfo m_info;
     void *m_gifFile = nullptr;       // GifFileType*

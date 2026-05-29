@@ -5,44 +5,63 @@
 #include <gif_lib.h>
 #include <cstring>
 #include <cstdlib>
+#include <climits>
+
+// Map RGBA pixel to nearest color in a palette
+static int nearestColor(QRgb pixel, const QVector<QRgb> &palette) {
+    int bestIdx = 0;
+    int bestDist = INT_MAX;
+    for (int i = 0; i < palette.size(); i++) {
+        int dr = qRed(pixel) - qRed(palette[i]);
+        int dg = qGreen(pixel) - qGreen(palette[i]);
+        int db = qBlue(pixel) - qBlue(palette[i]);
+        int dist = dr * dr + dg * dg + db * db;
+        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+    }
+    return bestIdx;
+}
 
 bool GifWriter::write(const QString &path,
                       const std::function<QImage(int)> &frameSource,
                       const std::vector<int> &durations,
                       int loop,
+                      int colorCount,
                       ProgressFn onProgress)
 {
-    QByteArray pathBytes = path.toUtf8();
-    FILE *fp = fopen(pathBytes.constData(), "wb");
-    if (!fp) { qWarning() << "fopen failed:" << path; return false; }
-
-    int err = 0;
-    GifFileType *gif = EGifOpenFileHandle(fileno(fp), &err);
-    if (!gif) { qWarning() << "EGifOpenFileHandle failed:" << err; fclose(fp); return false; }
-
-    EGifSetGifVersion(gif, true);  // GIF89a for animation support
-
     int total = static_cast<int>(durations.size());
-    if (total == 0) { EGifCloseFile(gif, &err); fclose(fp); return false; }
+    if (total == 0) return false;
 
     QImage first = frameSource(0);
-    if (first.isNull()) { EGifCloseFile(gif, &err); fclose(fp); return false; }
+    if (first.isNull()) return false;
     int w = first.width(), h = first.height();
-    if (w <= 0 || h <= 0) { EGifCloseFile(gif, &err); fclose(fp); return false; }
+    if (w <= 0 || h <= 0) return false;
+
+    // Build global palette from first frame
+    QImage firstIndexed = first.convertToFormat(QImage::Format_Indexed8, Qt::DiffuseDither);
+    QVector<QRgb> globalPalette = firstIndexed.colorTable();
+    // Limit palette size
+    if (colorCount < 256 && globalPalette.size() > colorCount)
+        globalPalette.resize(colorCount);
+
+    // Open GIF file
+    QByteArray pathBytes = path.toUtf8();
+    int err = 0;
+    GifFileType *gif = EGifOpenFileName(pathBytes.constData(), false, &err);
+    if (!gif) { qWarning() << "EGifOpenFileName failed:" << err; return false; }
+
+    EGifSetGifVersion(gif, true);
 
     gif->SWidth = w; gif->SHeight = h;
     gif->SColorResolution = 8;
     gif->SBackGroundColor = 0;
 
-    // 全局调色板 (256 色)
-    QImage indexed = first.convertToFormat(QImage::Format_Indexed8, Qt::DiffuseDither);
+    // Set global color map
     ColorMapObject *cmap = GifMakeMapObject(256, NULL);
-    if (!cmap) { EGifCloseFile(gif, &err); fclose(fp); return false; }
-    auto ct = indexed.colorTable();
-    int n = ct.size();
+    if (!cmap) { EGifCloseFile(gif, &err); return false; }
+    int nColors = globalPalette.size();
     for (int i = 0; i < 256; i++) {
-        if (i < n) {
-            QRgb c = ct[i];
+        if (i < nColors) {
+            QRgb c = globalPalette[i];
             cmap->Colors[i].Red   = qRed(c);
             cmap->Colors[i].Green = qGreen(c);
             cmap->Colors[i].Blue  = qBlue(c);
@@ -63,32 +82,50 @@ bool GifWriter::write(const QString &path,
         EGifPutExtensionTrailer(gif);
     }
 
+    QImage firstMapped(w, h, QImage::Format_Indexed8);
+    firstMapped.setColorTable(globalPalette);
+    for (int y = 0; y < h; y++) {
+        auto *line = reinterpret_cast<const QRgb *>(first.constScanLine(y));
+        for (int x = 0; x < w; x++)
+            firstMapped.setPixel(x, y, nearestColor(line[x], globalPalette));
+    }
+
     for (int i = 0; i < total; i++) {
-        QImage img = frameSource(i);
-        if (img.isNull()) continue;
-        int w2 = img.width(), h2 = img.height();
-        if (w2 <= 0 || h2 <= 0) continue;
-        img = img.convertToFormat(QImage::Format_Indexed8, Qt::DiffuseDither);
+        QImage frame = (i == 0) ? firstMapped : [&]() -> QImage {
+            QImage src = frameSource(i);
+            if (src.isNull()) return {};
+            QImage indexed(w, h, QImage::Format_Indexed8);
+            indexed.setColorTable(globalPalette);
+            QImage rgba = src.convertToFormat(QImage::Format_RGBA8888);
+            for (int y = 0; y < h; y++) {
+                auto *line = reinterpret_cast<const QRgb *>(rgba.constScanLine(y));
+                for (int x = 0; x < w; x++)
+                    indexed.setPixel(x, y, nearestColor(line[x], globalPalette));
+            }
+            return indexed;
+        }();
+
+        if (frame.isNull()) continue;
 
         // Graphic Control Extension
         int delay = (i < (int)durations.size()) ? durations[i] : 100;
         int cs = delay / 10;  if (cs < 1) cs = 1;
         GifByteType gceBuf[8];
         GraphicsControlBlock gcb;
-        gcb.DisposalMode = 2;          // restore to background
+        gcb.DisposalMode = 2;
         gcb.UserInputFlag = false;
         gcb.DelayTime = cs;
-        gcb.TransparentColor = -1;     // none
+        gcb.TransparentColor = -1;
         size_t gceLen = EGifGCBToExtension(&gcb, gceBuf);
         EGifPutExtension(gif, GRAPHICS_EXT_FUNC_CODE, (int)gceLen, gceBuf);
 
-        EGifPutImageDesc(gif, 0, 0, w2, h2, 0, NULL);
+        EGifPutImageDesc(gif, 0, 0, w, h, 0, NULL);
 
-        std::vector<GifByteType> row(w2);
-        for (int y = 0; y < h2; y++) {
-            const uchar *src = img.constScanLine(y);
-            std::memcpy(row.data(), src, w2);
-            EGifPutLine(gif, row.data(), w2);
+        std::vector<GifByteType> row(w);
+        for (int y = 0; y < h; y++) {
+            const uchar *src = frame.constScanLine(y);
+            std::memcpy(row.data(), src, w);
+            EGifPutLine(gif, row.data(), w);
         }
 
         if (onProgress) onProgress(i + 1, total);
@@ -96,7 +133,6 @@ bool GifWriter::write(const QString &path,
 
     EGifCloseFile(gif, &err);
     GifFreeMapObject(cmap);
-    fclose(fp);
 
     if (err != 0) { qWarning() << "EGifCloseFile err:" << err; return false; }
     return true;
