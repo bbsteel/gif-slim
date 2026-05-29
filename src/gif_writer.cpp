@@ -223,8 +223,9 @@ bool GifWriter::write(const QString &path,
     }
     delete[] lut;
 
+    // EGifCloseFile frees gif->SColorMap internally — do NOT GifFreeMapObject(cmap)
+    // after this call, or we double-free.
     EGifCloseFile(gif, &err);
-    GifFreeMapObject(cmap);
 
     if (err != 0) { qWarning() << "EGifCloseFile err:" << err; return false; }
     return true;
