@@ -138,6 +138,9 @@ bool GifWriter::write(const QString &path,
         EGifPutExtensionTrailer(gif);
     }
 
+    // Quantize all frames to indexed first, then diff consecutive frames
+    // to write only changed rectangles instead of full-canvas images.
+    QVector<QImage> indexedFrames(total);
     for (int i = 0; i < total; i++) {
         QImage src = frameSource(i);
         if (src.isNull()) continue;
@@ -150,26 +153,77 @@ bool GifWriter::write(const QString &path,
             for (int x = 0; x < w; x++)
                 indexed.setPixel(x, y, nearestColor(line[x], globalPalette));
         }
+        indexedFrames[i] = indexed;
+    }
 
-        // Graphic Control Extension
+    // Write frame 0 as full canvas
+    {
+        const QImage &img = indexedFrames[0];
+        int delay = (0 < (int)durations.size()) ? durations[0] : 100;
+        int cs = delay / 10;  if (cs < 1) cs = 1;
+        GifByteType gceBuf[8];
+        GraphicsControlBlock gcb;
+        gcb.DisposalMode = 0;  // leave in place (frames diff against this)
+        gcb.UserInputFlag = false;
+        gcb.DelayTime = cs;
+        gcb.TransparentColor = -1;
+        size_t gceLen = EGifGCBToExtension(&gcb, gceBuf);
+        EGifPutExtension(gif, GRAPHICS_EXT_FUNC_CODE, (int)gceLen, gceBuf);
+        EGifPutImageDesc(gif, 0, 0, w, h, 0, NULL);
+        std::vector<GifByteType> row(w);
+        for (int y = 0; y < h; y++) {
+            std::memcpy(row.data(), img.constScanLine(y), w);
+            EGifPutLine(gif, row.data(), w);
+        }
+        if (onProgress) onProgress(1, total);
+    }
+
+    // Write subsequent frames as diff rectangles against previous frame
+    for (int i = 1; i < total; i++) {
+        const QImage &cur = indexedFrames[i];
+        const QImage &prev = indexedFrames[i - 1];
+        if (cur.isNull() || prev.isNull()) continue;
+
+        // Find bounding box of changed pixels
+        int minX = w, minY = h, maxX = -1, maxY = -1;
+        for (int y = 0; y < h; y++) {
+            const uchar *pRow = prev.constScanLine(y);
+            const uchar *cRow = cur.constScanLine(y);
+            for (int x = 0; x < w; x++) {
+                if (pRow[x] != cRow[x]) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        }
+
+        if (minX > maxX) {
+            // No change at all — write a 1×1 transparent placeholder
+            minX = 0; minY = 0; maxX = 0; maxY = 0;
+        }
+
+        int bw = maxX - minX + 1;
+        int bh = maxY - minY + 1;
+
         int delay = (i < (int)durations.size()) ? durations[i] : 100;
         int cs = delay / 10;  if (cs < 1) cs = 1;
         GifByteType gceBuf[8];
         GraphicsControlBlock gcb;
-        gcb.DisposalMode = 2;
+        gcb.DisposalMode = 0;  // leave in place
         gcb.UserInputFlag = false;
         gcb.DelayTime = cs;
         gcb.TransparentColor = -1;
         size_t gceLen = EGifGCBToExtension(&gcb, gceBuf);
         EGifPutExtension(gif, GRAPHICS_EXT_FUNC_CODE, (int)gceLen, gceBuf);
 
-        EGifPutImageDesc(gif, 0, 0, w, h, 0, NULL);
+        EGifPutImageDesc(gif, minX, minY, bw, bh, 0, NULL);
 
-        std::vector<GifByteType> row(w);
-        for (int y = 0; y < h; y++) {
-            const uchar *scan = indexed.constScanLine(y);
-            std::memcpy(row.data(), scan, w);
-            EGifPutLine(gif, row.data(), w);
+        std::vector<GifByteType> row(bw);
+        for (int y = 0; y < bh; y++) {
+            std::memcpy(row.data(), cur.constScanLine(minY + y) + minX, bw);
+            EGifPutLine(gif, row.data(), bw);
         }
 
         if (onProgress) onProgress(i + 1, total);
@@ -191,11 +245,13 @@ qint64 GifWriter::estimateSize(int frameCount, int width, int height,
     int w = std::max(1, static_cast<int>(width * scale));
     int h = std::max(1, static_cast<int>(height * scale));
     qint64 raw = static_cast<qint64>(w) * h;  // 1 byte/pixel (indexed)
-    // GIF LZW typical ratios for animated content, conservative side
-    int div = 5;          // 256 colors → ~5:1
-    if (colors <= 128) div = 8;
-    if (colors <= 64)  div = 14;
-    if (colors <= 32)  div = 22;
-    if (colors <= 16)  div = 32;
-    return raw / div * n + 2048;  // + header/palette/loop extension overhead
+    // Frame 0 is full-canvas; subsequent frames are diff rectangles.
+    // Conservatively estimate ~30% change per frame on average.
+    qint64 fullFirst = raw / 5;           // first frame: full canvas, ~5:1 LZW
+    qint64 perDiff   = raw * 3 / 10 / 5;  // diff frames: ~30% area, ~5:1 LZW
+    if (colors <= 128) { fullFirst = raw / 8;  perDiff = raw * 3 / 10 / 8; }
+    if (colors <= 64)  { fullFirst = raw / 14; perDiff = raw * 3 / 10 / 14; }
+    if (colors <= 32)  { fullFirst = raw / 22; perDiff = raw * 3 / 10 / 22; }
+    if (colors <= 16)  { fullFirst = raw / 32; perDiff = raw * 3 / 10 / 32; }
+    return fullFirst + perDiff * std::max(0, n - 1) + 2048;
 }

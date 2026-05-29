@@ -252,6 +252,29 @@ bool MainWindow::exportGif(const QString &path, bool reloadAfterSave) {
     }
 
     m_player->pause();
+
+    // Fast path: if nothing changed, just copy the original file
+    bool unchanged = (m_scaleFactor == 1.0 && m_speedFactor == 1.0 && m_colorCount == 256
+        && static_cast<int>(m_activeFrames.size()) == m_reader->info().frameCount);
+    if (unchanged) {
+        for (size_t i = 0; i < m_activeFrames.size(); i++) {
+            if (m_activeFrames[i] != static_cast<int>(i)) { unchanged = false; break; }
+        }
+    }
+    if (unchanged && m_sourcePath != outPath) {
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        bool copied = QFile::copy(m_sourcePath, outPath);
+        QApplication::restoreOverrideCursor();
+        if (copied) {
+            m_statusLabel->setText(QString("已保存 → %1").arg(QFileInfo(outPath).fileName()));
+            if (reloadAfterSave) {
+                QString p = outPath;
+                QTimer::singleShot(0, this, [this, p]() { loadGif(p); });
+            }
+            return true;
+        }
+    }
+
     QApplication::setOverrideCursor(Qt::WaitCursor);
     m_statusLabel->setText("保存中...");
 
