@@ -1,6 +1,7 @@
 #include "gif_writer.h"
 
 #include <QFile>
+#include <QHash>
 #include <QDebug>
 #include <gif_lib.h>
 #include <cstring>
@@ -154,24 +155,60 @@ bool GifWriter::write(const QString &path,
     unsigned char (*lut)[64][64] = new unsigned char[64][64][64];
     buildColorLUT(lut, globalPalette);
 
-    // Write each frame as a standalone full-canvas image.
-    // Disposal mode 2 (restore to background) ensures each frame is independent
-    // and visually correct regardless of inter-frame content shifts.
+    // Detect background color from the first frame's edges.
+    // Most GIFs have a uniform background; sampling edges gives us the best guess.
+    auto detectBg = [&](const QImage &img) -> int {
+        auto rgba = img.convertToFormat(QImage::Format_ARGB32);
+        auto *row0 = reinterpret_cast<const QRgb *>(rgba.constScanLine(0));
+        auto *rowH = reinterpret_cast<const QRgb *>(rgba.constScanLine(h - 1));
+        QHash<QRgb, int> hist;
+        for (int x = 0; x < w; x++) { hist[row0[x]]++; hist[rowH[x]]++; }
+        for (int y = 0; y < h; y++) {
+            hist[reinterpret_cast<const QRgb *>(rgba.constScanLine(y))[0]]++;
+            hist[reinterpret_cast<const QRgb *>(rgba.constScanLine(y))[w - 1]]++;
+        }
+        QRgb best = 0; int bestN = 0;
+        for (auto it = hist.begin(); it != hist.end(); ++it)
+            if (it.value() > bestN) { bestN = it.value(); best = it.key(); }
+        return lut[(qRed(best) >> 2) & 63][(qGreen(best) >> 2) & 63][(qBlue(best) >> 2) & 63];
+    };
+    int bgIdx = detectBg(first);
+
+    // Write each frame.  Disposal mode 2 clears the previous frame's rectangle
+    // to the background colour, so each frame can safely cover only its own
+    // non-background bounding box without leaving artefacts.
     for (int i = 0; i < total; i++) {
         QImage src = frameSource(i);
         if (src.isNull()) continue;
         QImage rgba = src.convertToFormat(QImage::Format_ARGB32);
 
-        QImage indexed(w, h, QImage::Format_Indexed8);
-        indexed.setColorTable(globalPalette);
+        // Quantise to global palette
+        std::vector<uchar> pixels(w * h);
         for (int y = 0; y < h; y++) {
             auto *line = reinterpret_cast<const QRgb *>(rgba.constScanLine(y));
-            uchar *dst = indexed.scanLine(y);
+            uchar *dst = pixels.data() + y * w;
             for (int x = 0; x < w; x++) {
                 QRgb p = line[x];
                 dst[x] = lut[(qRed(p) >> 2) & 63][(qGreen(p) >> 2) & 63][(qBlue(p) >> 2) & 63];
             }
         }
+
+        // Bounding box of non-background pixels
+        int minX = w, minY = h, maxX = -1, maxY = -1;
+        for (int y = 0; y < h; y++) {
+            const uchar *row = pixels.data() + y * w;
+            for (int x = 0; x < w; x++) {
+                if (row[x] != bgIdx) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        }
+        if (minX > maxX) { minX = 0; minY = 0; maxX = 0; maxY = 0; }
+        int bw = maxX - minX + 1;
+        int bh = maxY - minY + 1;
 
         int delay = (i < (int)durations.size()) ? durations[i] : 100;
         int cs = delay / 10;  if (cs < 1) cs = 1;
@@ -184,12 +221,12 @@ bool GifWriter::write(const QString &path,
         size_t gceLen = EGifGCBToExtension(&gcb, gceBuf);
         EGifPutExtension(gif, GRAPHICS_EXT_FUNC_CODE, (int)gceLen, gceBuf);
 
-        EGifPutImageDesc(gif, 0, 0, w, h, 0, NULL);
+        EGifPutImageDesc(gif, minX, minY, bw, bh, 0, NULL);
 
-        std::vector<GifByteType> row(w);
-        for (int y = 0; y < h; y++) {
-            std::memcpy(row.data(), indexed.constScanLine(y), w);
-            EGifPutLine(gif, row.data(), w);
+        std::vector<GifByteType> row(bw);
+        for (int y = 0; y < bh; y++) {
+            std::memcpy(row.data(), pixels.data() + (minY + y) * w + minX, bw);
+            EGifPutLine(gif, row.data(), bw);
         }
 
         if (onProgress) onProgress(i + 1, total);
@@ -212,11 +249,12 @@ qint64 GifWriter::estimateSize(int frameCount, int width, int height,
     int w = std::max(1, static_cast<int>(width * scale));
     int h = std::max(1, static_cast<int>(height * scale));
     qint64 raw = static_cast<qint64>(w) * h;  // 1 byte/pixel (indexed)
-    // GIF LZW typical ratios for animated content
-    int div = 5;          // 256 colors → ~5:1
+    // Frames are written as background-cropped bounding boxes.
+    // Assume ~30% of canvas changes per frame on average.
+    int div = 5;          // 256 colors → ~5:1 LZW
     if (colors <= 128) div = 8;
     if (colors <= 64)  div = 14;
     if (colors <= 32)  div = 22;
     if (colors <= 16)  div = 32;
-    return raw / div * n + 2048;  // + header/palette/loop extension overhead
+    return raw * 3 / 10 / div * n + 2048;
 }
