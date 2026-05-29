@@ -275,6 +275,30 @@ bool MainWindow::exportGif(const QString &path, bool reloadAfterSave) {
         }
     }
 
+    // Smart path: when only cropping/skipping/speed (no scale or colour change),
+    // copy original frame data directly — preserves partial frames and local palettes.
+    bool rawOk = (m_scaleFactor == 1.0 && m_colorCount == 256 && !m_sourcePath.isEmpty());
+    if (rawOk) {
+        std::vector<int> durs;
+        durs.reserve(m_activeFrames.size());
+        for (int idx : m_activeFrames)
+            durs.push_back(std::max(10, int(m_reader->info().durations[idx] / m_speedFactor)));
+
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        qInfo() << "exportGif: raw copy" << m_activeFrames.size() << "frames";
+        bool ok = GifWriter::writeRaw(outPath, m_sourcePath, m_activeFrames, durs);
+        QApplication::restoreOverrideCursor();
+        qInfo() << "exportGif: raw copy returned" << ok;
+        if (ok) {
+            m_statusLabel->setText(QString("已保存 %1 帧 → %2").arg(m_activeFrames.size()).arg(QFileInfo(outPath).fileName()));
+            if (reloadAfterSave) {
+                QString p = outPath;
+                QTimer::singleShot(0, this, [this, p]() { loadGif(p); });
+            }
+            return true;
+        }
+    }
+
     QApplication::setOverrideCursor(Qt::WaitCursor);
     m_statusLabel->setText("保存中...");
 

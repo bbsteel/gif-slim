@@ -231,6 +231,91 @@ bool GifWriter::write(const QString &path,
     return true;
 }
 
+bool GifWriter::writeRaw(const QString &dstPath,
+                          const QString &srcPath,
+                          const std::vector<int> &frameIndices,
+                          const std::vector<int> &delays)
+{
+    QByteArray srcBytes = srcPath.toUtf8();
+    int srcErr = 0;
+    GifFileType *src = DGifOpenFileName(srcBytes.constData(), &srcErr);
+    if (!src) { qWarning() << "writeRaw: open src failed" << srcErr; return false; }
+    if (DGifSlurp(src) != GIF_OK) { qWarning() << "writeRaw: slurp failed"; DGifCloseFile(src, nullptr); return false; }
+
+    int n = (int)frameIndices.size();
+    if (n == 0) { DGifCloseFile(src, nullptr); return false; }
+
+    QByteArray dstBytes = dstPath.toUtf8();
+    int dstErr = 0;
+    GifFileType *dst = EGifOpenFileName(dstBytes.constData(), false, &dstErr);
+    if (!dst) { qWarning() << "writeRaw: EGifOpenFileName failed" << dstErr; DGifCloseFile(src, nullptr); return false; }
+    EGifSetGifVersion(dst, true);
+
+    // Copy global color map
+    ColorMapObject *gcm = nullptr;
+    if (src->SColorMap) {
+        int nc = src->SColorMap->ColorCount;
+        gcm = GifMakeMapObject(nc, nullptr);
+        if (gcm) {
+            gcm->ColorCount = nc;
+            gcm->BitsPerPixel = src->SColorMap->BitsPerPixel;
+            for (int i = 0; i < nc; i++) gcm->Colors[i] = src->SColorMap->Colors[i];
+        }
+    }
+    dst->SColorMap = gcm;
+    EGifPutScreenDesc(dst, src->SWidth, src->SHeight,
+                      src->SColorResolution, src->SBackGroundColor, gcm);
+
+    // NETSCAPE loop extension
+    {
+        EGifPutExtensionLeader(dst, APPLICATION_EXT_FUNC_CODE);
+        char nsle[11] = {'N','E','T','S','C','A','P','E','2','.','0'};
+        EGifPutExtensionBlock(dst, 11, nsle);
+        unsigned char sub[3] = {1, 0, 0};
+        EGifPutExtensionBlock(dst, 3, sub);
+        EGifPutExtensionTrailer(dst);
+    }
+
+    // Copy selected frames
+    for (int i = 0; i < n; i++) {
+        int si = frameIndices[i];
+        if (si < 0 || si >= src->ImageCount) continue;
+        const SavedImage &simg = src->SavedImages[si];
+
+        // Write extensions, replacing delay in GCE
+        for (int j = 0; j < simg.ExtensionBlockCount; j++) {
+            const ExtensionBlock &eb = simg.ExtensionBlocks[j];
+            if (eb.Function == GRAPHICS_EXT_FUNC_CODE && eb.ByteCount >= 4) {
+                int newDelay = (i < (int)delays.size()) ? delays[i] : 100;
+                int cs = newDelay / 10; if (cs < 1) cs = 1;
+                GifByteType buf[4];
+                buf[0] = eb.Bytes[0];   // disposal + flags
+                buf[1] = (GifByteType)(cs & 0xFF);
+                buf[2] = (GifByteType)((cs >> 8) & 0xFF);
+                buf[3] = eb.Bytes[3];   // transparent color
+                EGifPutExtension(dst, GRAPHICS_EXT_FUNC_CODE, 4, buf);
+            } else {
+                EGifPutExtension(dst, eb.Function, eb.ByteCount, eb.Bytes);
+            }
+        }
+
+        const GifImageDesc &desc = simg.ImageDesc;
+        EGifPutImageDesc(dst, desc.Left, desc.Top, desc.Width, desc.Height,
+                         desc.Interlace, simg.ImageDesc.ColorMap);
+
+        int fw = desc.Width, fh = desc.Height;
+        const unsigned char *raster = simg.RasterBits;
+        for (int y = 0; y < fh; y++) {
+            EGifPutLine(dst, (GifPixelType *)(raster + y * fw), fw);
+        }
+    }
+
+    EGifCloseFile(dst, &dstErr);
+    DGifCloseFile(src, nullptr);
+    if (dstErr != 0) { qWarning() << "writeRaw: close err:" << dstErr; return false; }
+    return true;
+}
+
 qint64 GifWriter::estimateSize(int frameCount, int width, int height,
                                 int colors, double scale, int keepEvery,
                                 double speedFactor)

@@ -25,6 +25,14 @@ public:
                       int colorCount = 256,
                       ProgressFn onProgress = {});
 
+    /// 直通拷贝：从源文件读取指定帧直接写入目标文件。
+    /// 不经过解码→合成→重编码，完整保留原 GIF 的局部帧、局部调色板等压缩结构。
+    /// 仅适用于裁剪/抽帧操作（无缩放、无调色变更）。
+    static bool writeRaw(const QString &dstPath,
+                         const QString &srcPath,
+                         const std::vector<int> &frameIndices,
+                         const std::vector<int> &delays);
+
     /// 预估输出大小 (bytes)
     static qint64 estimateSize(int frameCount, int width, int height,
                                int colors, double scale, int keepEvery,
