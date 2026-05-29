@@ -30,6 +30,11 @@ done
 
 if command -v iscc >/dev/null 2>&1; then
     iscc packaging/windows/GifEditor.iss
-else
+elif command -v zip >/dev/null 2>&1; then
     (cd "$DIST_DIR" && zip -r "GifEditor-${VERSION}-windows-x64-portable.zip" windows-portable)
+elif command -v powershell >/dev/null 2>&1; then
+    powershell -Command "Compress-Archive -Path '$PORTABLE_DIR' -DestinationPath '$DIST_DIR/GifEditor-${VERSION}-windows-x64-portable.zip'"
+else
+    echo "错误: 未找到 iscc、zip 或 powershell，无法打包。请安装 Inno Setup 或 zip。" >&2
+    exit 1
 fi
