@@ -21,6 +21,67 @@ static int nearestColor(QRgb pixel, const QVector<QRgb> &palette) {
     return bestIdx;
 }
 
+// Sample frames across the animation and build a representative global palette
+static QVector<QRgb> buildPalette(const std::function<QImage(int)> &frameSource,
+                                   int totalFrames, int targetColors) {
+    constexpr int kMaxSamplePixels = 800 * 600 * 8;  // Cap memory for sampling
+    int sampleCount = std::min(totalFrames, 16);
+    int step = std::max(1, totalFrames / sampleCount);
+    sampleCount = (totalFrames + step - 1) / step;
+
+    // Build a combined strip from sampled frames
+    int stripW = 0;
+    QVector<QImage> samples;
+    for (int i = 0; i < sampleCount; i++) {
+        QImage img = frameSource(i * step);
+        if (img.isNull()) continue;
+        QImage rgba = img.convertToFormat(QImage::Format_RGBA8888);
+        int sw = rgba.width(), sh = rgba.height();
+        // Scale down large frames for sampling to save memory
+        if (sw * sh * sampleCount > kMaxSamplePixels) {
+            double ratio = std::sqrt(double(kMaxSamplePixels) / (sw * sh * sampleCount));
+            sw = std::max(1, int(sw * ratio));
+            sh = std::max(1, int(sh * ratio));
+            rgba = rgba.scaled(sw, sh, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        }
+        samples.append(rgba);
+        stripW = std::max(stripW, sw);
+    }
+
+    if (samples.isEmpty()) {
+        QVector<QRgb> fallback;
+        fallback.reserve(256);
+        for (int i = 0; i < 256; i++)
+            fallback.append(qRgb(i, i, i));
+        return fallback;
+    }
+
+    // Concatenate sampled frames side-by-side into one image
+    int totalW = 0, maxH = 0;
+    for (const auto &s : samples) {
+        totalW += s.width();
+        maxH = std::max(maxH, s.height());
+    }
+
+    QImage combined(totalW, maxH, QImage::Format_RGBA8888);
+    combined.fill(Qt::transparent);
+    int xOff = 0;
+    for (const auto &s : samples) {
+        for (int y = 0; y < s.height(); y++) {
+            const auto *src = reinterpret_cast<const QRgb *>(s.constScanLine(y));
+            auto *dst = reinterpret_cast<QRgb *>(combined.scanLine(y)) + xOff;
+            std::memcpy(dst, src, s.width() * 4);
+        }
+        xOff += s.width();
+    }
+
+    QImage indexed = combined.convertToFormat(QImage::Format_Indexed8, Qt::DiffuseDither);
+    QVector<QRgb> palette = indexed.colorTable();
+    if (targetColors < 256 && palette.size() > targetColors)
+        palette.resize(targetColors);
+    return palette;
+}
+
 bool GifWriter::write(const QString &path,
                       const std::function<QImage(int)> &frameSource,
                       const std::vector<int> &durations,
@@ -36,12 +97,8 @@ bool GifWriter::write(const QString &path,
     int w = first.width(), h = first.height();
     if (w <= 0 || h <= 0) return false;
 
-    // Build global palette from first frame
-    QImage firstIndexed = first.convertToFormat(QImage::Format_Indexed8, Qt::DiffuseDither);
-    QVector<QRgb> globalPalette = firstIndexed.colorTable();
-    // Limit palette size
-    if (colorCount < 256 && globalPalette.size() > colorCount)
-        globalPalette.resize(colorCount);
+    // Build global palette from sampled frames (not just the first)
+    QVector<QRgb> globalPalette = buildPalette(frameSource, total, colorCount);
 
     // Open GIF file
     QByteArray pathBytes = path.toUtf8();
@@ -55,7 +112,6 @@ bool GifWriter::write(const QString &path,
     gif->SColorResolution = 8;
     gif->SBackGroundColor = 0;
 
-    // Set global color map
     ColorMapObject *cmap = GifMakeMapObject(256, NULL);
     if (!cmap) { EGifCloseFile(gif, &err); return false; }
     int nColors = globalPalette.size();
@@ -82,30 +138,18 @@ bool GifWriter::write(const QString &path,
         EGifPutExtensionTrailer(gif);
     }
 
-    QImage firstMapped(w, h, QImage::Format_Indexed8);
-    firstMapped.setColorTable(globalPalette);
-    for (int y = 0; y < h; y++) {
-        auto *line = reinterpret_cast<const QRgb *>(first.constScanLine(y));
-        for (int x = 0; x < w; x++)
-            firstMapped.setPixel(x, y, nearestColor(line[x], globalPalette));
-    }
-
     for (int i = 0; i < total; i++) {
-        QImage frame = (i == 0) ? firstMapped : [&]() -> QImage {
-            QImage src = frameSource(i);
-            if (src.isNull()) return {};
-            QImage indexed(w, h, QImage::Format_Indexed8);
-            indexed.setColorTable(globalPalette);
-            QImage rgba = src.convertToFormat(QImage::Format_RGBA8888);
-            for (int y = 0; y < h; y++) {
-                auto *line = reinterpret_cast<const QRgb *>(rgba.constScanLine(y));
-                for (int x = 0; x < w; x++)
-                    indexed.setPixel(x, y, nearestColor(line[x], globalPalette));
-            }
-            return indexed;
-        }();
+        QImage src = frameSource(i);
+        if (src.isNull()) continue;
+        QImage rgba = src.convertToFormat(QImage::Format_RGBA8888);
 
-        if (frame.isNull()) continue;
+        QImage indexed(w, h, QImage::Format_Indexed8);
+        indexed.setColorTable(globalPalette);
+        for (int y = 0; y < h; y++) {
+            auto *line = reinterpret_cast<const QRgb *>(rgba.constScanLine(y));
+            for (int x = 0; x < w; x++)
+                indexed.setPixel(x, y, nearestColor(line[x], globalPalette));
+        }
 
         // Graphic Control Extension
         int delay = (i < (int)durations.size()) ? durations[i] : 100;
@@ -123,8 +167,8 @@ bool GifWriter::write(const QString &path,
 
         std::vector<GifByteType> row(w);
         for (int y = 0; y < h; y++) {
-            const uchar *src = frame.constScanLine(y);
-            std::memcpy(row.data(), src, w);
+            const uchar *scan = indexed.constScanLine(y);
+            std::memcpy(row.data(), scan, w);
             EGifPutLine(gif, row.data(), w);
         }
 
@@ -146,9 +190,12 @@ qint64 GifWriter::estimateSize(int frameCount, int width, int height,
     int n = std::max(1, frameCount / keepEvery);
     int w = std::max(1, static_cast<int>(width * scale));
     int h = std::max(1, static_cast<int>(height * scale));
-    qint64 perFrame = static_cast<qint64>(w) * h;
-    if (colors <= 64)  perFrame = perFrame * 3 / 4;
-    if (colors <= 32)  perFrame = perFrame / 2;
-    if (colors <= 16)  perFrame = perFrame / 3;
+    // Raw pixel data × conservative LZW compression ratio (~2.5:1)
+    qint64 rawRange = static_cast<qint64>(w) * h;
+    qint64 perFrame = rawRange * 2 / 5;
+    if (colors <= 128) perFrame = rawRange * 2 / 6;
+    if (colors <= 64)  perFrame = rawRange / 4;
+    if (colors <= 32)  perFrame = rawRange / 6;
+    if (colors <= 16)  perFrame = rawRange / 10;
     return perFrame * n + 1024;
 }

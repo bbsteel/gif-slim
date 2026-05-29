@@ -17,6 +17,7 @@ public:
 
 signals:
     void valuesChanged(int left, int right);
+    void seekRequested(int pos);       // 点击 bar 区域时请求跳转播放位置
 
 protected:
     void paintEvent(QPaintEvent *) override;

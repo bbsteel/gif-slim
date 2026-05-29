@@ -37,18 +37,14 @@ MainWindow::MainWindow(QWidget *parent)
     resize(1100, 700);
     setAcceptDrops(true);
 
-    auto *fileMenu = menuBar()->addMenu("文件");
-    auto *openAction = fileMenu->addAction("打开 GIF...");
-    openAction->setShortcut(QKeySequence::Open);
-    connect(openAction, &QAction::triggered, this, [this]() { openFile(); });
-    auto *saveAction = fileMenu->addAction("保存");
-    saveAction->setShortcut(QKeySequence::Save);
-    connect(saveAction, &QAction::triggered, this, &MainWindow::save);
-    auto *quitAction = fileMenu->addAction("退出");
-    quitAction->setShortcut(QKeySequence::Quit);
-    connect(quitAction, &QAction::triggered, this, &QWidget::close);
-
     auto *toolbar = addToolBar("控制");
+
+    auto *openBtn = new QPushButton("📂 打开");
+    openBtn->setFixedWidth(88);
+    connect(openBtn, &QPushButton::clicked, this, [this]() { openFile(); });
+    toolbar->addWidget(openBtn);
+
+    toolbar->addSeparator();
 
     m_playBtn = new QPushButton("▶ 播放");
     m_playBtn->setFixedWidth(88);
@@ -124,6 +120,10 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_rangeSlider, &RangeSlider::valuesChanged, this, [this](int left, int right) {
         if (m_player->isPlaying()) m_player->pause();
         updateRangeState(left, right, true);
+    });
+    connect(m_rangeSlider, &RangeSlider::seekRequested, this, [this](int pos) {
+        if (m_player->isPlaying()) m_player->pause();
+        m_player->showFrame(pos);
     });
 }
 

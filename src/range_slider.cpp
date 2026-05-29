@@ -106,11 +106,14 @@ void RangeSlider::mousePressEvent(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton) return;
     QPointF pos = event->position();
 
-    // 左把手优先
     if (leftHandleRect().contains(pos)) {
         m_dragging = -1;
     } else if (rightHandleRect().contains(pos)) {
         m_dragging = 1;
+    } else {
+        // Click on bar area → seek playback position
+        int val = std::clamp(posToValue(int(pos.x())), m_min, m_max);
+        emit seekRequested(val);
     }
 }
 
