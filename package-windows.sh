@@ -17,8 +17,16 @@ mkdir -p "$PORTABLE_DIR"
 qmake6 GifEditor.pro
 make -j"$(nproc 2>/dev/null || echo 4)"
 
-cp gif-editor.exe "$PORTABLE_DIR/gif-editor.exe"
+cp release/gif-editor.exe "$PORTABLE_DIR/gif-editor.exe"
 windeployqt "$PORTABLE_DIR/gif-editor.exe"
+
+# Copy giflib DLL if available
+for dll in /mingw64/bin/libgif-7.dll /mingw64/bin/libgif.dll /ucrt64/bin/libgif-7.dll /ucrt64/bin/libgif.dll; do
+    if [ -f "$dll" ]; then
+        cp "$dll" "$PORTABLE_DIR/"
+        break
+    fi
+done
 
 if command -v iscc >/dev/null 2>&1; then
     iscc packaging/windows/GifEditor.iss
