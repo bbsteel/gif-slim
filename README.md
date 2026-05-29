@@ -106,11 +106,28 @@ pacman -S --needed \
   mingw-w64-ucrt-x86_64-giflib
 ```
 
+每个包的用途：
+
+| 包名 | 提供的命令 | 用途 |
+| --- | --- | --- |
+| `mingw-w64-ucrt-x86_64-qt6-base` | `qmake6` | 生成 Makefile |
+| `make` | `make` | 构建 |
+| `mingw-w64-ucrt-x86_64-gcc` | `g++` | 编译 |
+| `mingw-w64-ucrt-x86_64-qt6-tools` | `windeployqt` | 自动收集 Qt DLL |
+| `mingw-w64-ucrt-x86_64-giflib` | `libgif-7.dll` | GIF 编解码运行时库 |
+
+`cp`、`mkdir`、`nproc` 来自 `coreutils`（MSYS2 默认已装）。`zip` 来自 `zip` 包（MSYS2 默认已装）。
+
 如果你要直接生成安装包（而不是 portable zip），还需要安装 **Inno Setup**：
 
 ```powershell
+# 以管理员身份在 PowerShell 中执行：
+# 1. 先装 Chocolatey（https://chocolatey.org/install）
+# 2. 再装 Inno Setup
 choco install innosetup -y
 ```
+
+`choco` 安装后 `iscc` 命令会出现在 PATH 中，脚本自动检测到后生成 `.exe` 安装包。否则退化为 portable zip（通过 PowerShell `Compress-Archive` 打包）。
 
 ### 直接打包
 
@@ -124,7 +141,7 @@ choco install innosetup -y
 
 1. `qmake6 GifEditor.pro`
 2. `make -j...`
-3. 把 `gif-editor.exe` 复制到 `dist/windows-portable/`
+3. 把 `release/gif-editor.exe` 复制到 `dist/windows-portable/`
 4. 执行 `windeployqt dist/windows-portable/gif-editor.exe`
 5. 如果系统里有 `iscc`（Inno Setup 编译器），则继续用：
 
@@ -152,10 +169,13 @@ dist/GifEditor-1.0.0-windows-x64-portable.zip
 
 | 问题 | 原因 | 处理方式 |
 | --- | --- | --- |
-| 找不到 `windeployqt` | Qt6 Tools 没装或 PATH 不对 | 确认 `mingw-w64-ucrt-x86_64-qt6-tools` 已安装，并且使用的是 UCRT64 shell |
-| 打出来只有 exe 没有 Qt DLL | 没执行 `windeployqt` | 不要手工只拷 exe，直接用 `./package-windows.sh` |
-| `iscc` 不存在 | 没装 Inno Setup | 安装 Inno Setup，或接受 portable zip 产物 |
-| 运行时报缺 `giflib` 相关 DLL | Windows 运行库没被一起带出 | 确保 `mingw-w64-ucrt-x86_64-giflib` 已安装后重新打包 |
+| 找不到 `qmake6` | `mingw-w64-ucrt-x86_64-qt6-base` 没装，或不在 UCRT64 shell | 确认包已装、shell 正确，`which qmake6` 验证 |
+| 找不到 `windeployqt` | `mingw-w64-ucrt-x86_64-qt6-tools` 没装 | `pacman -S mingw-w64-ucrt-x86_64-qt6-tools` |
+| `cp: cannot stat 'release/gif-editor.exe'` | 构建失败，产物没生成 | 检查 `make` 输出定位错误（通常是 giflib 没装或 qmake 版本不对） |
+| 运行时报缺 `libgif-7.dll` | giflib 运行库没打包进去 | 确保 `mingw-w64-ucrt-x86_64-giflib` 已安装后重新跑脚本 |
+| `zip: command not found` | MSYS2 精简安装缺少 zip | `pacman -S zip`，或脚本会自动回退到 PowerShell |
+| `iscc` 不存在 | 没装 Inno Setup | 用管理员 PowerShell：`choco install innosetup -y`；不需要安装包则忽略，脚本自动退化为 portable zip |
+| `choco` 不存在 | 没装 Chocolatey 包管理器 | https://chocolatey.org/install 先安装，或直接下载 Inno Setup 安装 |
 
 ## macOS 打包
 

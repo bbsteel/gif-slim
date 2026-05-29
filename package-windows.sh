@@ -1,6 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
+# 依赖命令一览（均在 MSYS2 UCRT64 shell 中可用）：
+#   qmake6      → pacman -S mingw-w64-ucrt-x86_64-qt6-base
+#   make        → pacman -S make
+#   nproc       → pacman -S coreutils（MSYS2 默认已装）
+#   windeployqt → pacman -S mingw-w64-ucrt-x86_64-qt6-tools
+#   giflib DLL  → pacman -S mingw-w64-ucrt-x86_64-giflib
+#   iscc        → choco install innosetup -y（需要管理员 PowerShell）
+#   zip         → pacman -S zip（MSYS2 默认已装）
+#   powershell  → Windows 自带
+#   （choco 本身 → https://chocolatey.org/install）
+
 cd "$(dirname "$0")"
 
 if [[ "${OS:-}" != "Windows_NT" && "$(uname -s)" != MINGW* && "$(uname -s)" != MSYS* && "$(uname -s)" != CYGWIN* ]]; then
