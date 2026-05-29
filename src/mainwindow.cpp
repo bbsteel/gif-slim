@@ -9,6 +9,7 @@
 #include <QApplication>
 #include <QDialog>
 #include <QProgressDialog>
+#include <QTimer>
 #include <QDialogButtonBox>
 #include <QDebug>
 #include <QDragEnterEvent>
@@ -45,6 +46,11 @@ MainWindow::MainWindow(QWidget *parent)
     connect(openBtn, &QPushButton::clicked, this, [this]() { openFile(); });
     toolbar->addWidget(openBtn);
 
+    m_saveBtn = new QPushButton("💾 保存");
+    m_saveBtn->setEnabled(false);
+    m_saveBtn->setStyleSheet("color: #4fc3f7;");
+    toolbar->addWidget(m_saveBtn);
+
     toolbar->addSeparator();
 
     m_playBtn = new QPushButton("▶ 播放");
@@ -74,11 +80,6 @@ MainWindow::MainWindow(QWidget *parent)
     m_undoBtn = new QPushButton("↩ 撤销");
     m_undoBtn->setEnabled(false);
     toolbar->addWidget(m_undoBtn);
-
-    m_saveBtn = new QPushButton("💾 保存");
-    m_saveBtn->setEnabled(false);
-    m_saveBtn->setStyleSheet("color: #4fc3f7;");
-    toolbar->addWidget(m_saveBtn);
 
     m_rangeSlider = new RangeSlider();
     m_rangeSlider->setFixedHeight(52);
@@ -298,7 +299,7 @@ bool MainWindow::exportGif(const QString &path, bool reloadAfterSave) {
         [&progress](int done, int total) {
             progress.setMaximum(total);
             progress.setValue(done);
-            QApplication::processEvents();
+            QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
         });
     progress.close();
     QApplication::restoreOverrideCursor();
@@ -306,7 +307,10 @@ bool MainWindow::exportGif(const QString &path, bool reloadAfterSave) {
     if (ok) {
         if (overwriteSource) QFile::remove(backupPath);
         m_statusLabel->setText(QString("已保存 %1 帧 → %2").arg(active.size()).arg(QFileInfo(outPath).fileName()));
-        if (reloadAfterSave) loadGif(outPath);
+        if (reloadAfterSave) {
+            QString p = outPath;
+            QTimer::singleShot(0, this, [this, p]() { loadGif(p); });
+        }
         return true;
     }
 
@@ -506,7 +510,18 @@ void MainWindow::save() {
 
     if (dialog.exec() != QDialog::Accepted) return;
 
-    exportGif(pathEdit->text(), true);
+    QString outPath = pathEdit->text().trimmed();
+    if (!outPath.endsWith(".gif", Qt::CaseInsensitive))
+        outPath += ".gif";
+
+    if (QFile::exists(outPath)) {
+        auto answer = QMessageBox::question(this, "确认覆盖",
+            QString("文件 \"%1\" 已存在，是否覆盖？").arg(QFileInfo(outPath).fileName()),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes) return;
+    }
+
+    exportGif(outPath, true);
 }
 
 void MainWindow::setRange(int start, int end) {

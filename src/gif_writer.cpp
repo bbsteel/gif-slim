@@ -191,11 +191,11 @@ qint64 GifWriter::estimateSize(int frameCount, int width, int height,
     int w = std::max(1, static_cast<int>(width * scale));
     int h = std::max(1, static_cast<int>(height * scale));
     qint64 raw = static_cast<qint64>(w) * h;  // 1 byte/pixel (indexed)
-    // GIF LZW typically compresses 4–25× depending on color count & complexity
-    int div = 4;          // 256 colors → ~4:1
-    if (colors <= 128) div = 6;
-    if (colors <= 64)  div = 10;
-    if (colors <= 32)  div = 16;
-    if (colors <= 16)  div = 25;
+    // GIF LZW typical ratios for animated content, conservative side
+    int div = 5;          // 256 colors → ~5:1
+    if (colors <= 128) div = 8;
+    if (colors <= 64)  div = 14;
+    if (colors <= 32)  div = 22;
+    if (colors <= 16)  div = 32;
     return raw / div * n + 2048;  // + header/palette/loop extension overhead
 }
