@@ -82,7 +82,7 @@ void GifReader::compositeAllFrames() {
     }
 
     // Working canvas: the visual state after drawing each frame
-    QImage canvas(w, h, QImage::Format_RGBA8888);
+    QImage canvas(w, h, QImage::Format_ARGB32);
     canvas.fill(bgColor);
 
     // For DISPOSE_PREVIOUS (3): saved canvas state before a frame is drawn
@@ -178,7 +178,7 @@ QImage GifReader::decodeFrame(int index) {
     ColorMapObject *cmap = saved.ImageDesc.ColorMap ? saved.ImageDesc.ColorMap : gif->SColorMap;
     if (!cmap) return {};
 
-    QImage img(m_info.width, m_info.height, QImage::Format_RGBA8888);
+    QImage img(m_info.width, m_info.height, QImage::Format_ARGB32);
     img.fill(Qt::transparent);
 
     const auto *raster = saved.RasterBits;

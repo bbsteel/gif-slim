@@ -35,7 +35,7 @@ static QVector<QRgb> buildPalette(const std::function<QImage(int)> &frameSource,
     for (int i = 0; i < sampleCount; i++) {
         QImage img = frameSource(i * step);
         if (img.isNull()) continue;
-        QImage rgba = img.convertToFormat(QImage::Format_RGBA8888);
+        QImage rgba = img.convertToFormat(QImage::Format_ARGB32);
         int sw = rgba.width(), sh = rgba.height();
         // Scale down large frames for sampling to save memory
         if (sw * sh * sampleCount > kMaxSamplePixels) {
@@ -63,7 +63,7 @@ static QVector<QRgb> buildPalette(const std::function<QImage(int)> &frameSource,
         maxH = std::max(maxH, s.height());
     }
 
-    QImage combined(totalW, maxH, QImage::Format_RGBA8888);
+    QImage combined(totalW, maxH, QImage::Format_ARGB32);
     combined.fill(Qt::transparent);
     int xOff = 0;
     for (const auto &s : samples) {
@@ -141,7 +141,7 @@ bool GifWriter::write(const QString &path,
     for (int i = 0; i < total; i++) {
         QImage src = frameSource(i);
         if (src.isNull()) continue;
-        QImage rgba = src.convertToFormat(QImage::Format_RGBA8888);
+        QImage rgba = src.convertToFormat(QImage::Format_ARGB32);
 
         QImage indexed(w, h, QImage::Format_Indexed8);
         indexed.setColorTable(globalPalette);
@@ -190,12 +190,12 @@ qint64 GifWriter::estimateSize(int frameCount, int width, int height,
     int n = std::max(1, frameCount / keepEvery);
     int w = std::max(1, static_cast<int>(width * scale));
     int h = std::max(1, static_cast<int>(height * scale));
-    // Raw pixel data × conservative LZW compression ratio (~2.5:1)
-    qint64 rawRange = static_cast<qint64>(w) * h;
-    qint64 perFrame = rawRange * 2 / 5;
-    if (colors <= 128) perFrame = rawRange * 2 / 6;
-    if (colors <= 64)  perFrame = rawRange / 4;
-    if (colors <= 32)  perFrame = rawRange / 6;
-    if (colors <= 16)  perFrame = rawRange / 10;
-    return perFrame * n + 1024;
+    qint64 raw = static_cast<qint64>(w) * h;  // 1 byte/pixel (indexed)
+    // GIF LZW typically compresses 4–25× depending on color count & complexity
+    int div = 4;          // 256 colors → ~4:1
+    if (colors <= 128) div = 6;
+    if (colors <= 64)  div = 10;
+    if (colors <= 32)  div = 16;
+    if (colors <= 16)  div = 25;
+    return raw / div * n + 2048;  // + header/palette/loop extension overhead
 }

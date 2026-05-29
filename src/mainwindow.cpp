@@ -8,6 +8,7 @@
 
 #include <QApplication>
 #include <QDialog>
+#include <QProgressDialog>
 #include <QDialogButtonBox>
 #include <QDebug>
 #include <QDragEnterEvent>
@@ -248,6 +249,10 @@ bool MainWindow::exportGif(const QString &path, bool reloadAfterSave) {
     QApplication::setOverrideCursor(Qt::WaitCursor);
     m_statusLabel->setText("保存中...");
 
+    QProgressDialog progress("正在保存 GIF...", QString(), 0, static_cast<int>(m_activeFrames.size()), this);
+    progress.setWindowModality(Qt::WindowModal);
+    progress.setMinimumDuration(500);
+
     auto *reader = m_reader;
     auto active = m_activeFrames;
     const double scale = m_scaleFactor;
@@ -284,7 +289,13 @@ bool MainWindow::exportGif(const QString &path, bool reloadAfterSave) {
         QFile::copy(m_sourcePath, backupPath);
     }
 
-    bool ok = GifWriter::write(outPath, frameSource, durs, 0, colorCount);
+    bool ok = GifWriter::write(outPath, frameSource, durs, 0, colorCount,
+        [&progress](int done, int total) {
+            progress.setMaximum(total);
+            progress.setValue(done);
+            QApplication::processEvents();
+        });
+    progress.close();
     QApplication::restoreOverrideCursor();
 
     if (ok) {
@@ -342,9 +353,14 @@ void MainWindow::loadGif(const QString &path) {
     delete m_reader;
     m_reader = nullptr;
     m_statusLabel->setText("加载中...");
+    QProgressDialog progress("正在加载 GIF...", QString(), 0, 0, this);
+    progress.setWindowModality(Qt::WindowModal);
+    progress.setMinimumDuration(500);
+    progress.show();
     QApplication::processEvents();
 
     auto *reader = new GifReader(path);
+    progress.close();
     if (!reader->isValid()) {
         qWarning() << "loadGif FAILED:" << path;
         delete reader;
