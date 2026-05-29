@@ -278,9 +278,12 @@ bool MainWindow::exportGif(const QString &path, bool reloadAfterSave) {
     QApplication::setOverrideCursor(Qt::WaitCursor);
     m_statusLabel->setText("保存中...");
 
-    QProgressDialog progress("正在保存 GIF...", QString(), 0, static_cast<int>(m_activeFrames.size()), this);
+    QProgressDialog progress("正在保存 GIF...", "取消", 0, 0, this);
     progress.setWindowModality(Qt::WindowModal);
-    progress.setMinimumDuration(500);
+    progress.setMinimumDuration(0);
+    progress.setLabelText("正在分析颜色...");
+    progress.show();
+    QApplication::processEvents();
 
     auto *reader = m_reader;
     auto active = m_activeFrames;
@@ -320,7 +323,8 @@ bool MainWindow::exportGif(const QString &path, bool reloadAfterSave) {
 
     bool ok = GifWriter::write(outPath, frameSource, durs, 0, colorCount,
         [&progress](int done, int total) {
-            progress.setMaximum(total);
+            if (progress.maximum() == 0) progress.setMaximum(total);
+            progress.setLabelText(QString("正在写入帧 %1 / %2...").arg(done).arg(total));
             progress.setValue(done);
             QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
         });
