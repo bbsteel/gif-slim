@@ -2,6 +2,8 @@
 #include <QPalette>
 #include <QStyleFactory>
 #include <QFile>
+#include <QDir>
+#include <QStandardPaths>
 #include <QTextStream>
 #include <QDateTime>
 #include <QTimer>
@@ -23,16 +25,24 @@ void logHandler(QtMsgType type, const QMessageLogContext &, const QString &msg) 
 }
 
 int main(int argc, char *argv[]) {
-    g_logFile.setFileName("gif-editor.log");
-    g_logFile.open(QIODevice::WriteOnly | QIODevice::Append);
-    qInstallMessageHandler(logHandler);
-    qInfo() << "=== GIF Editor started ===";
-
     auto cli = parseCli(argc, argv);
     bool headless = cli.headless;
 
     QApplication app(argc, argv);
     app.setApplicationName("GIF Editor");
+    app.setApplicationVersion("1.0.0");
+    app.setOrganizationName("gif-editor-cpp");
+    app.setDesktopFileName("gif-editor");
+
+    QString logDir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    if (logDir.isEmpty()) {
+        logDir = QDir::currentPath();
+    }
+    QDir().mkpath(logDir);
+    g_logFile.setFileName(QDir(logDir).filePath("gif-editor.log"));
+    g_logFile.open(QIODevice::WriteOnly | QIODevice::Append);
+    qInstallMessageHandler(logHandler);
+    qInfo() << "=== GIF Editor started ===";
 
     app.setStyle(QStyleFactory::create("Fusion"));
     QPalette p;

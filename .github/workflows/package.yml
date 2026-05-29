@@ -1,0 +1,70 @@
+name: package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev qt6-tools-dev-tools libgif-dev librsvg2-bin
+      - name: Build AppImage
+        run: ./package-linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GifEditor-linux
+          path: dist/GifEditor-*-linux-x86_64.AppImage
+
+  windows:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >-
+            git
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-tools
+            mingw-w64-ucrt-x86_64-giflib
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup --no-progress -y
+      - name: Build Windows package
+        env:
+          PATH: /ucrt64/bin:${{ env.PATH }}
+        run: ./package-windows.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GifEditor-windows
+          path: |
+            dist/GifEditor-*-windows-x64-setup.exe
+            dist/GifEditor-*-windows-x64-portable.zip
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          brew install qt giflib
+      - name: Build macOS package
+        run: |
+          export PATH="$(brew --prefix qt)/bin:$PATH"
+          ./package-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GifEditor-macos
+          path: dist/GifEditor-*-macos.dmg

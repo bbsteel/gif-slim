@@ -1,19 +1,16 @@
 cmake_minimum_required(VERSION 3.16)
-project(GifEditor VERSION 1.0 LANGUAGES CXX)
+project(GifEditor VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-# Qt6
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
-# giflib
 find_library(GIF_LIB gif REQUIRED)
 find_path(GIF_INCLUDE_DIR gif_lib.h REQUIRED)
 
-# Source files
 set(SOURCES
     src/main.cpp
     src/mainwindow.cpp
@@ -22,19 +19,28 @@ set(SOURCES
     src/optimizer.cpp
     src/player_widget.cpp
     src/editor_panel.cpp
+    src/range_slider.cpp
+    src/cli.cpp
 )
 
 set(HEADERS
     src/mainwindow.h
     src/gif_reader.h
     src/gif_writer.h
+    src/optimizer.h
     src/player_widget.h
     src/editor_panel.h
-    src/frame_cache.h
-    src/optimizer.h
+    src/range_slider.h
+    src/cli.h
 )
 
 add_executable(gif-editor ${SOURCES} ${HEADERS})
+
+set_target_properties(gif-editor PROPERTIES
+    MACOSX_BUNDLE_GUI_IDENTIFIER com.gifeditor.app
+    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+)
 
 target_include_directories(gif-editor PRIVATE
     ${CMAKE_SOURCE_DIR}/src
@@ -46,5 +52,7 @@ target_link_libraries(gif-editor PRIVATE
     ${GIF_LIB}
 )
 
-# Install
-install(TARGETS gif-editor DESTINATION bin)
+install(TARGETS gif-editor
+    BUNDLE DESTINATION .
+    RUNTIME DESTINATION bin
+)

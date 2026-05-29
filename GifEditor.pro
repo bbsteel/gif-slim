@@ -2,6 +2,18 @@ QT       += widgets
 TARGET    = gif-editor
 TEMPLATE  = app
 CONFIG   += c++17
+VERSION   = 1.0.0
+
+QMAKE_TARGET_DESCRIPTION = GIF Editor
+QMAKE_TARGET_COPYRIGHT = Copyright (C) 2026
+
+win32:exists(assets/gif-editor.ico) {
+    RC_ICONS = assets/gif-editor.ico
+}
+
+macx:exists(assets/gif-editor.icns) {
+    ICON = assets/gif-editor.icns
+}
 
 SOURCES += \
     src/main.cpp \
@@ -26,3 +38,6 @@ HEADERS += \
 
 INCLUDEPATH += src /usr/include
 LIBS += -lgif
+
+target.path = /usr/bin
+INSTALLS += target

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=GIF Editor
+Comment=Edit GIF frame ranges and export optimized GIFs
+Exec=gif-editor
+Icon=gif-editor
+Categories=Graphics;
+Terminal=false
