@@ -222,9 +222,17 @@ QString MainWindow::defaultSavePath() const {
 QString MainWindow::estimatedSizeText() const {
     if (!m_reader || m_activeFrames.empty()) return "—";
 
+    const auto &info = m_reader->info();
+    // When writing raw (no scale/color change), size scales linearly with frame count
+    if (m_scaleFactor == 1.0 && m_colorCount == 256) {
+        qint64 bytes = static_cast<qint64>(info.fileSize)
+                     * static_cast<int>(m_activeFrames.size()) / info.frameCount;
+        return formatBytes(bytes);
+    }
+    // Re-encode path: estimate based on frame size and LZW compression
     qint64 bytes = GifWriter::estimateSize(static_cast<int>(m_activeFrames.size()),
-                                           m_reader->info().width,
-                                           m_reader->info().height,
+                                           info.width,
+                                           info.height,
                                            m_colorCount,
                                            m_scaleFactor,
                                            1,
@@ -285,8 +293,15 @@ bool MainWindow::exportGif(const QString &path, bool reloadAfterSave) {
             durs.push_back(std::max(10, int(m_reader->info().durations[idx] / m_speedFactor)));
 
         QApplication::setOverrideCursor(Qt::WaitCursor);
+        QProgressDialog rawProgress("正在保存 GIF（直通拷贝）...", QString(), 0, 0, this);
+        rawProgress.setWindowModality(Qt::WindowModal);
+        rawProgress.setMinimumDuration(0);
+        rawProgress.show();
+        QApplication::processEvents();
+
         qInfo() << "exportGif: raw copy" << m_activeFrames.size() << "frames";
         bool ok = GifWriter::writeRaw(outPath, m_sourcePath, m_activeFrames, durs);
+        rawProgress.close();
         QApplication::restoreOverrideCursor();
         qInfo() << "exportGif: raw copy returned" << ok;
         if (ok) {
