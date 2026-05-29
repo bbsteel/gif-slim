@@ -7,6 +7,7 @@ set -euo pipefail
 #   nproc       → pacman -S coreutils（MSYS2 默认已装）
 #   windeployqt → pacman -S mingw-w64-ucrt-x86_64-qt6-tools
 #   giflib DLL  → pacman -S mingw-w64-ucrt-x86_64-giflib
+#   libgcc_s_seh-1.dll, libstdc++-6.dll → mingw-w64-ucrt-x86_64-gcc 自带
 #   iscc        → choco install innosetup -y（需要管理员 PowerShell）
 #   zip         → pacman -S zip（MSYS2 默认已装）
 #   powershell  → Windows 自带
@@ -32,11 +33,21 @@ cp release/gif-editor.exe "$PORTABLE_DIR/gif-editor.exe"
 windeployqt "$PORTABLE_DIR/gif-editor.exe"
 
 # Copy giflib DLL if available
-for dll in /mingw64/bin/libgif-7.dll /mingw64/bin/libgif.dll /ucrt64/bin/libgif-7.dll /ucrt64/bin/libgif.dll; do
+for dll in /ucrt64/bin/libgif-7.dll /mingw64/bin/libgif-7.dll /ucrt64/bin/libgif.dll /mingw64/bin/libgif.dll; do
     if [ -f "$dll" ]; then
         cp "$dll" "$PORTABLE_DIR/"
         break
     fi
+done
+
+# Copy MinGW GCC runtime DLLs (windeployqt does not pick these up)
+for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+    for prefix in /ucrt64/bin /mingw64/bin; do
+        if [ -f "$prefix/$dll" ]; then
+            cp "$prefix/$dll" "$PORTABLE_DIR/"
+            break
+        fi
+    done
 done
 
 if command -v iscc >/dev/null 2>&1; then
