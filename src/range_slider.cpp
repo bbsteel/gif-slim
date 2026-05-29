@@ -139,6 +139,9 @@ void RangeSlider::mouseMoveEvent(QMouseEvent *event) {
 }
 
 void RangeSlider::mouseReleaseEvent(QMouseEvent *) {
+    if (m_dragging != 0) {
+        emit rangeDragFinished(m_left, m_right);
+    }
     m_dragging = 0;
 }
 

@@ -119,8 +119,13 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_editor, &EditorPanel::colorApplied, this, &MainWindow::applyColor);
 
     connect(m_rangeSlider, &RangeSlider::valuesChanged, this, [this](int left, int right) {
-        if (m_player->isPlaying()) m_player->pause();
-        updateRangeState(left, right, true);
+        updateRangeState(left, right, false);
+    });
+    connect(m_rangeSlider, &RangeSlider::rangeDragFinished, this, [this](int left, int right) {
+        int cur = m_player->currentFrame();
+        if (cur < left || cur > right) {
+            m_player->showFrame(left);
+        }
     });
     connect(m_rangeSlider, &RangeSlider::seekRequested, this, [this](int pos) {
         if (m_player->isPlaying()) m_player->pause();
