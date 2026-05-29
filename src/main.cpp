@@ -22,6 +22,7 @@ void logHandler(QtMsgType type, const QMessageLogContext &, const QString &msg) 
     ts << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
        << " [" << level << "] " << msg << "\n";
     ts.flush();
+    g_logFile.flush();
 }
 
 int main(int argc, char *argv[]) {

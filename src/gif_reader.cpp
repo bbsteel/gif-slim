@@ -111,9 +111,14 @@ void GifReader::compositeAllFrames() {
             if (prevFi.disposal == 2) {
                 // Restore to background
                 for (int y = 0; y < ph; y++) {
-                    auto *line = reinterpret_cast<QRgb *>(canvas.scanLine(pTop + y)) + pLeft;
-                    for (int x = 0; x < pw; x++)
+                    int cy = pTop + y;
+                    if (cy < 0 || cy >= h) continue;
+                    auto *line = reinterpret_cast<QRgb *>(canvas.scanLine(cy)) + pLeft;
+                    for (int x = 0; x < pw; x++) {
+                        int cx = pLeft + x;
+                        if (cx < 0 || cx >= w) continue;
                         line[x] = bgColor;
+                    }
                 }
             } else if (prevFi.disposal == 3 && !prevCanvas.isNull()) {
                 // Restore to previous canvas state (only the affected rect)
@@ -122,8 +127,11 @@ void GifReader::compositeAllFrames() {
                     if (cy < 0 || cy >= h) continue;
                     auto *dst = reinterpret_cast<QRgb *>(canvas.scanLine(cy)) + pLeft;
                     auto *src = reinterpret_cast<const QRgb *>(prevCanvas.constScanLine(cy)) + pLeft;
-                    for (int x = 0; x < pw; x++)
+                    for (int x = 0; x < pw; x++) {
+                        int cx = pLeft + x;
+                        if (cx < 0 || cx >= w) continue;
                         dst[x] = src[x];
+                    }
                 }
             }
             // disposal 0/1: leave in place (do nothing)

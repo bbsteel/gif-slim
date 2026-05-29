@@ -321,6 +321,7 @@ bool MainWindow::exportGif(const QString &path, bool reloadAfterSave) {
         QFile::copy(m_sourcePath, backupPath);
     }
 
+    qInfo() << "exportGif: writing" << active.size() << "frames to" << outPath;
     bool ok = GifWriter::write(outPath, frameSource, durs, 0, colorCount,
         [&progress](int done, int total) {
             if (progress.maximum() == 0) progress.setMaximum(total);
@@ -328,12 +329,14 @@ bool MainWindow::exportGif(const QString &path, bool reloadAfterSave) {
             progress.setValue(done);
             QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
         });
+    qInfo() << "exportGif: write returned" << ok;
     progress.close();
     QApplication::restoreOverrideCursor();
 
     if (ok) {
         if (overwriteSource) QFile::remove(backupPath);
         m_statusLabel->setText(QString("已保存 %1 帧 → %2").arg(active.size()).arg(QFileInfo(outPath).fileName()));
+        qInfo() << "exportGif: saved OK, reloadAfterSave=" << reloadAfterSave;
         if (reloadAfterSave) {
             QString p = outPath;
             QTimer::singleShot(0, this, [this, p]() { loadGif(p); });
