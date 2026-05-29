@@ -1,7 +1,6 @@
 #include "gif_writer.h"
 
 #include <QFile>
-#include <QHash>
 #include <QDebug>
 #include <gif_lib.h>
 #include <cstring>
@@ -155,25 +154,6 @@ bool GifWriter::write(const QString &path,
     unsigned char (*lut)[64][64] = new unsigned char[64][64][64];
     buildColorLUT(lut, globalPalette);
 
-    // Detect background color from the first frame's edges.
-    // Most GIFs have a uniform background; sampling edges gives us the best guess.
-    auto detectBg = [&](const QImage &img) -> int {
-        auto rgba = img.convertToFormat(QImage::Format_ARGB32);
-        auto *row0 = reinterpret_cast<const QRgb *>(rgba.constScanLine(0));
-        auto *rowH = reinterpret_cast<const QRgb *>(rgba.constScanLine(h - 1));
-        QHash<QRgb, int> hist;
-        for (int x = 0; x < w; x++) { hist[row0[x]]++; hist[rowH[x]]++; }
-        for (int y = 0; y < h; y++) {
-            hist[reinterpret_cast<const QRgb *>(rgba.constScanLine(y))[0]]++;
-            hist[reinterpret_cast<const QRgb *>(rgba.constScanLine(y))[w - 1]]++;
-        }
-        QRgb best = 0; int bestN = 0;
-        for (auto it = hist.begin(); it != hist.end(); ++it)
-            if (it.value() > bestN) { bestN = it.value(); best = it.key(); }
-        return lut[(qRed(best) >> 2) & 63][(qGreen(best) >> 2) & 63][(qBlue(best) >> 2) & 63];
-    };
-    int bgIdx = detectBg(first);
-
     // Write each frame.  Disposal mode 2 clears the previous frame's rectangle
     // to the background colour, so each frame can safely cover only its own
     // non-background bounding box without leaving artefacts.
@@ -182,15 +162,25 @@ bool GifWriter::write(const QString &path,
         if (src.isNull()) continue;
         QImage rgba = src.convertToFormat(QImage::Format_ARGB32);
 
-        // Quantise to global palette
+        // Quantise to global palette and build per-frame histogram
         std::vector<uchar> pixels(w * h);
+        int hist[256] = {};
         for (int y = 0; y < h; y++) {
             auto *line = reinterpret_cast<const QRgb *>(rgba.constScanLine(y));
             uchar *dst = pixels.data() + y * w;
             for (int x = 0; x < w; x++) {
                 QRgb p = line[x];
-                dst[x] = lut[(qRed(p) >> 2) & 63][(qGreen(p) >> 2) & 63][(qBlue(p) >> 2) & 63];
+                uchar idx = lut[(qRed(p) >> 2) & 63][(qGreen(p) >> 2) & 63][(qBlue(p) >> 2) & 63];
+                dst[x] = idx;
+                hist[idx]++;
             }
+        }
+
+        // Per-frame background: most frequent palette index in this frame.
+        // Adapts automatically to window/content switches in screen recordings.
+        int bgIdx = 0, bgCount = 0;
+        for (int j = 0; j < 256; j++) {
+            if (hist[j] > bgCount) { bgCount = hist[j]; bgIdx = j; }
         }
 
         // Bounding box of non-background pixels
